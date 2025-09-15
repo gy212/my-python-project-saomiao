@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM 图像扫描与导出</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            background-color: #f4f7f9;
+        }
+        .app-shell {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .main-content-area {
+            flex-grow: 1;
+            display: flex;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            background-color: white;
+        }
+        .left-panel {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .right-panel {
+            flex: 1;
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+        }
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            padding: 1.5rem;
+        }
+        .file-input-area {
+            display: block;
+            border: 2px dashed #cbd5e1;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            background-color: #f8fafc;
+            transition: background-color 0.2s;
+        }
+        .file-input-area:hover {
+            background-color: #f1f5f9;
+        }
+        .convert-option-button {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid transparent;
+            font-weight: 500;
+            color: white;
+            transition: all 0.2s;
+            cursor: pointer;
+            text-align: center;
+        }
+        .convert-option-button[data-format="word"] {
+            background-color: #3b82f6;
+        }
+        .convert-option-button[data-format="word"]:hover {
+            background-color: #2563eb;
+        }
+        .convert-option-button[data-format="word"].selected {
+            border-color: #60a5fa;
+            background-color: #2563eb;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #3b82f6;
+        }
+
+        .convert-option-button[data-format="pdf"] {
+            background-color: #ef4444;
+        }
+        .convert-option-button[data-format="pdf"]:hover {
+            background-color: #dc2626;
+        }
+        .convert-option-button[data-format="pdf"].selected {
+            border-color: #f87171;
+            background-color: #dc2626;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #ef4444;
+        }
+
+        .convert-option-button svg {
+            width: 1.75rem;
+            height: 1.75rem;
+            margin-bottom: 0.5rem;
+            color: white;
+        }
+        .recent-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            transition: background-color 0.2s;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer; /* 使历史条目看起来可点击 */
+        }
+        .recent-item:last-child {
+            border-bottom: none;
+        }
+        .recent-item:hover {
+            background-color: #f0f9ff; /* Tailwind sky-50 for hover */
+        }
+        .file-icon-sm {
+            width: 1.25rem;
+            height: 1.25rem;
+            margin-right: 0.75rem;
+            flex-shrink: 0;
+        }
+        .recent-item-info {
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        .recent-scans-list::-webkit-scrollbar { width: 6px; }
+        .recent-scans-list::-webkit-scrollbar-track { background: #f8fafc; border-radius: 3px;}
+        .recent-scans-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px;}
+        .recent-scans-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0s 0.3s linear;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+            transition: opacity 0.3s ease, visibility 0s 0s linear;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            width: 90%;
+            max-width: 400px;
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        .modal-overlay.active .modal-content {
+            transform: scale(1);
+        }
+        #image-preview-area img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 0.375rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-shell">
+        <header class="bg-white shadow-sm sticky top-0 z-20">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <h1 class="text-xl font-bold text-slate-800">LLM 图像扫描与导出</h1>
+                    <button id="settings-btn" class="p-2 rounded-md text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.646.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 1.255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.333.184-.582.496-.646.87l-.212 1.282a1.125 1.125 0 01-1.11.94h-2.594a1.125 1.125 0 01-1.11-.94l-.213-1.282c-.062-.374-.312-.686-.645-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-1.255c.007-.378-.137-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.184.582-.496.645-.87l.212-1.281z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span class="sr-only">设置API密钥</span>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-content-area">
+            <div class="left-panel">
+                <div class="card">
+                    <label for="file-upload-trigger" class="file-input-area">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 text-blue-500 mx-auto mb-3">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                        </svg>
+                        <p class="text-blue-600 font-semibold">点击选择图片 (可多选)</p>
+                        <p class="text-xs text-slate-500 mt-1">或将文件拖拽到此处</p>
+                        <div id="file-path-display" class="mt-4 text-sm text-slate-600 break-all">未选择图片</div>
+                    </label>
+                </div>
+
+                <div class="card flex-grow flex flex-col">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+                        <div class="flex flex-col">
+                            <h3 class="text-md font-semibold text-slate-700 mb-2">图片预览 (首张)</h3>
+                            <div id="image-preview-area" class="flex-grow border border-slate-200 rounded-md bg-slate-50 flex items-center justify-center text-slate-400 min-h-[200px] p-1 overflow-hidden">
+                                <span>预览区</span>
+                            </div>
+                        </div>
+                        <div class="flex flex-col">
+                             <h3 class="text-md font-semibold text-slate-700 mb-2">提取的文本</h3>
+                            <textarea id="extracted-text-area" class="w-full flex-grow p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm resize-none min-h-[200px]" placeholder="提取后的文本将显示在这里..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 class="text-md font-semibold text-slate-700 mb-3">转换为</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <button class="convert-option-button selected" data-format="word">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                            Word
+                        </button>
+                        <button class="convert-option-button" data-format="pdf">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                            PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="right-panel">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-semibold text-slate-700">最近扫描</h2>
+                    <button id="clear-history-btn" class="text-xs text-blue-600 hover:text-blue-800 font-medium">清除历史</button>
+                </div>
+                <div id="recent-scans-list-container" class="recent-scans-list flex-grow overflow-y-auto space-y-1 pr-1">
+                    </div>
+            </div>
+        </div>
+
+        <footer class="bg-white shadow-top sticky bottom-0 z-10 mt-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+                 <div id="status-bar" class="text-xs text-slate-500 mb-2 text-center">准备就绪</div>
+                <button id="process-and-save-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg transition-all duration-150 flex items-center justify-center text-lg">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6 mr-2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.04l-.821 1.316z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+                    </svg>
+                    处理并保存
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <div id="api-key-modal-overlay" class="modal-overlay">
+        <div class="modal-content">
+            <h3 class="text-lg font-semibold text-slate-800 mb-4">设置 API 密钥</h3>
+            <label for="api-key-input" class="block text-sm font-medium text-slate-700 mb-1">请输入您的 API 密钥:</label>
+            <input type="password" id="api-key-input" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 mb-6" placeholder="您的API密钥">
+            <div class="flex justify-end gap-3">
+                <button id="cancel-api-key-btn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors">取消</button>
+                <button id="confirm-api-key-btn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="clear-history-modal-overlay" class="modal-overlay">
+        <div class="modal-content">
+            <h3 class="text-lg font-semibold text-slate-800 mb-2">确认操作</h3>
+            <p class="text-sm text-slate-600 mb-6">确定要清除所有最近扫描历史记录吗？此操作无法撤销。</p>
+            <div class="flex justify-end gap-3">
+                <button id="cancel-clear-history-btn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors">取消</button>
+                <button id="confirm-clear-history-btn" class="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors">确定清除</button>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        window.selectedFilePaths = [];
+        window.selectedOutputFormat = 'word';
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // ... (所有元素获取代码保持不变) ...
+            const fileInputAreaLabel = document.querySelector('label[for="file-upload-trigger"]');
+            const filePathDisplay = document.getElementById('file-path-display');
+            const statusBar = document.getElementById('status-bar');
+            const convertButtons = document.querySelectorAll('.convert-option-button');
+            const processSaveBtn = document.getElementById('process-and-save-btn');
+            const settingsBtn = document.getElementById('settings-btn');
+            const clearHistoryBtn = document.getElementById('clear-history-btn');
+            const imagePreviewArea = document.getElementById('image-preview-area');
+            const extractedTextArea = document.getElementById('extracted-text-area');
+            const recentScansListContainer = document.getElementById('recent-scans-list-container');
+
+            const apiKeyModalOverlay = document.getElementById('api-key-modal-overlay');
+            const apiKeyInput = document.getElementById('api-key-input');
+            const confirmApiKeyBtn = document.getElementById('confirm-api-key-btn');
+            const cancelApiKeyBtn = document.getElementById('cancel-api-key-btn');
+
+            const clearHistoryModalOverlay = document.getElementById('clear-history-modal-overlay');
+            const confirmClearHistoryBtn = document.getElementById('confirm-clear-history-btn');
+            const cancelClearHistoryBtn = document.getElementById('cancel-clear-history-btn');
+
+
+            function updateStatus(message, isError = false) {
+                // ... (保持不变) ...
+                if (statusBar) {
+                    statusBar.textContent = message;
+                    statusBar.className = `text-xs mb-2 text-center ${isError ? 'text-red-500' : 'text-slate-500'}`;
+                }
+                if (window.pywebview && window.pywebview.api) {
+                    console.log(isError ? "Error:" : "Status:", message);
+                } else if (isError) {
+                    console.error("Early Error (pywebview.api not ready?):", message);
+                }
+            }
+
+            async function displayImagePreview(filePath) {
+                // ... (保持不变) ...
+                if (!imagePreviewArea) return;
+                if (!filePath) {
+                    imagePreviewArea.innerHTML = '<span>预览区</span>';
+                    return;
+                }
+                try {
+                    if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.get_image_as_base64_data_uri === 'function') {
+                        updateStatus("正在加载预览...");
+                        const imageDataUri = await window.pywebview.api.get_image_as_base64_data_uri(filePath);
+                        if (imageDataUri) {
+                            imagePreviewArea.innerHTML = `<img src="${imageDataUri}" alt="图片预览">`;
+                            updateStatus("预览加载完成。");
+                        } else {
+                            imagePreviewArea.innerHTML = '<span>无法加载预览</span>';
+                            updateStatus("无法加载图片预览。", true);
+                        }
+                    } else {
+                         imagePreviewArea.innerHTML = '<span>预览功能不可用</span>';
+                         updateStatus("预览功能API未就绪。", true);
+                    }
+                } catch (e) {
+                    console.error("显示图片预览失败:", e);
+                    imagePreviewArea.innerHTML = '<span>预览加载失败</span>';
+                    updateStatus("图片预览加载失败: " + (e.message || String(e)), true);
+                }
+            }
+
+            if (fileInputAreaLabel) {
+                // ... (保持不变) ...
+                fileInputAreaLabel.addEventListener('click', async () => {
+                    try {
+                        if (!(window.pywebview && window.pywebview.api &&
+                              typeof window.pywebview.api.clear_text_cache === 'function' &&
+                              typeof window.pywebview.api.select_files === 'function')) {
+                            updateStatus("错误: 文件选择功能尚未准备好。", true);
+                            return;
+                        }
+                        updateStatus("正在打开文件选择对话框...");
+                        await window.pywebview.api.clear_text_cache();
+                        console.log("JS: 文本缓存已清除。");
+
+                        const result = await window.pywebview.api.select_files();
+                        if (result && result.length > 0) {
+                            window.selectedFilePaths = result;
+                            if (result.length === 1) {
+                                filePathDisplay.textContent = '已选择: ' + result[0].split(/[\\/]/).pop();
+                            } else {
+                                filePathDisplay.textContent = '已选择 ' + result.length + ' 个文件';
+                            }
+                            updateStatus(`已选择 ${result.length} 个文件。`);
+                            displayImagePreview(result[0]);
+                        } else {
+                            window.selectedFilePaths = [];
+                            filePathDisplay.textContent = '未选择图片';
+                            updateStatus("未选择任何图片。");
+                            displayImagePreview(null);
+                        }
+                    } catch (e) {
+                        console.error("文件选择或缓存清除失败:", e);
+                        filePathDisplay.textContent = '选择文件出错';
+                        updateStatus("选择文件出错: " + (e.message || String(e)), true);
+                        displayImagePreview(null);
+                    }
+                });
+            }
+
+            convertButtons.forEach(button => {
+                // ... (保持不变) ...
+                button.addEventListener('click', () => {
+                    convertButtons.forEach(btn => btn.classList.remove('selected'));
+                    button.classList.add('selected');
+                    window.selectedOutputFormat = button.dataset.format;
+                    updateStatus(`输出格式已更改为: ${window.selectedOutputFormat.toUpperCase()}`);
+                });
+            });
+
+            if (processSaveBtn) {
+                // ... (保持不变) ...
+                 processSaveBtn.addEventListener('click', async () => {
+                    if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.process_images === 'function')) {
+                        updateStatus("错误: 处理功能尚未准备好。", true);
+                        alert("处理功能尚未准备好，请稍后再试。");
+                        return;
+                    }
+                    if (window.selectedFilePaths.length === 0) {
+                        alert("请先选择要处理的图片！");
+                        updateStatus("错误: 请先选择图片！", true);
+                        return;
+                    }
+                    updateStatus(`正在处理 ${window.selectedFilePaths.length} 张图片，输出为 ${window.selectedOutputFormat.toUpperCase()}...`);
+                    try {
+                        const response = await window.pywebview.api.process_images(window.selectedFilePaths, window.selectedOutputFormat);
+
+                        updateStatus(response.message, response.status === "失败");
+
+                        let alertMessage = `处理结果: ${response.status}\n${response.message}\n`;
+                        let firstSuccessfulText = "";
+
+                        if (response.results && response.results.length > 0) {
+                            alertMessage += "\n详细信息:\n";
+                            response.results.forEach(res => {
+                                alertMessage += `- ${res.file_name}: ${res.status}`;
+                                if(res.saved_path) alertMessage += ` (已保存到: ${res.saved_path.split(/[\\/]/).pop()})`;
+                                if(res.error) alertMessage += ` (错误: ${res.error})`;
+                                alertMessage += `\n`;
+                                if (res.status === "成功并已保存" || res.status === "提取成功但未保存" || res.status === "提取成功但保存失败") {
+                                    if (!firstSuccessfulText && res.extracted_text) {
+                                        firstSuccessfulText = res.extracted_text;
+                                    }
+                                }
+                            });
+                            extractedTextArea.value = firstSuccessfulText;
+                            console.log("详细处理结果:", response.results);
+                            loadAndDisplayRecentScans();
+                        } else if (response.first_text) {
+                            extractedTextArea.value = response.first_text;
+                        } else {
+                            extractedTextArea.value = (response.status === "失败" && response.error) ? `处理失败: ${response.error}` : '';
+                        }
+
+                        alert(alertMessage);
+
+                    } catch (e) {
+                        console.error("调用 Python process_images 失败:", e);
+                        updateStatus("处理图片失败: " + (e.message || String(e)), true);
+                        alert("处理图片失败，请查看控制台获取更多信息。");
+                    }
+                });
+            }
+
+            function openModal(modalOverlay) {
+                if (modalOverlay) modalOverlay.classList.add('active');
+            }
+            function closeModal(modalOverlay) {
+                if (modalOverlay) modalOverlay.classList.remove('active');
+            }
+
+            if (settingsBtn && apiKeyModalOverlay) {
+                // ... (保持不变) ...
+                settingsBtn.addEventListener('click', () => {
+                    if (!(window.pywebview && window.pywebview.api)) {
+                        updateStatus("错误: API设置功能尚未准备好。", true); return;
+                    }
+                    apiKeyInput.value = '';
+                    openModal(apiKeyModalOverlay);
+                    apiKeyInput.focus();
+                });
+            }
+
+            if (confirmApiKeyBtn && apiKeyInput && apiKeyModalOverlay) {
+                // ... (保持不变) ...
+                confirmApiKeyBtn.addEventListener('click', async () => {
+                    const apiKey = apiKeyInput.value.trim();
+                    try {
+                        if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.set_api_key === 'function')) {
+                             updateStatus("错误: API设置功能尚未准备好。", true); closeModal(apiKeyModalOverlay); return;
+                        }
+                        const response = await window.pywebview.api.set_api_key(apiKey);
+                        updateStatus(response.message, response.status !== "成功");
+                    } catch (e) {
+                        updateStatus("设置 API 密钥失败: " + e.message, true);
+                    }
+                    closeModal(apiKeyModalOverlay);
+                });
+            }
+
+            if (cancelApiKeyBtn && apiKeyModalOverlay) {
+                // ... (保持不变) ...
+                cancelApiKeyBtn.addEventListener('click', () => closeModal(apiKeyModalOverlay));
+            }
+            if (apiKeyModalOverlay) {
+                // ... (保持不变) ...
+                apiKeyModalOverlay.addEventListener('click', (event) => {
+                    if (event.target === apiKeyModalOverlay) closeModal(apiKeyModalOverlay);
+                });
+            }
+
+            // 清除历史记录按钮 - 打开确认模态框
+            if (clearHistoryBtn && clearHistoryModalOverlay) {
+                clearHistoryBtn.addEventListener('click', () => {
+                     if (!(window.pywebview && window.pywebview.api)) {
+                        updateStatus("错误: 清除历史功能尚未准备好。", true); return;
+                    }
+                    openModal(clearHistoryModalOverlay);
+                });
+            }
+
+            // 清除历史确认模态框 - 确定按钮
+            if (confirmClearHistoryBtn && clearHistoryModalOverlay) {
+                confirmClearHistoryBtn.addEventListener('click', async () => {
+                    try {
+                        if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.clear_recent_scans_history_py === 'function')) {
+                             updateStatus("错误: 清除历史功能尚未准备好。", true); closeModal(clearHistoryModalOverlay); return;
+                        }
+                        const response = await window.pywebview.api.clear_recent_scans_history_py();
+                        updateStatus(response.message, response.status !== "成功");
+                        loadAndDisplayRecentScans(); // 清除后刷新列表
+                    } catch (e) {
+                        updateStatus("清除历史记录失败: " + e.message, true);
+                    }
+                    closeModal(clearHistoryModalOverlay);
+                });
+            }
+
+            // 清除历史确认模态框 - 取消按钮 / 点击遮罩层
+            if (cancelClearHistoryBtn && clearHistoryModalOverlay) {
+                cancelClearHistoryBtn.addEventListener('click', () => closeModal(clearHistoryModalOverlay));
+            }
+            if (clearHistoryModalOverlay) {
+                clearHistoryModalOverlay.addEventListener('click', (event) => {
+                    if (event.target === clearHistoryModalOverlay) closeModal(clearHistoryModalOverlay);
+                });
+            }
+
+            // 加载和显示最近扫描列表的函数
+            async function loadAndDisplayRecentScans() {
+                if (!recentScansListContainer) {
+                    console.warn("loadAndDisplayRecentScans: recentScansListContainer is not available.");
+                    return;
+                }
+
+                if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.get_recent_scans === 'function')) {
+                    console.warn("loadAndDisplayRecentScans: pywebview.api.get_recent_scans is not available yet.");
+                    recentScansListContainer.innerHTML = '<div class="text-center text-sm text-slate-400 p-4">历史记录正在加载...</div>';
+                    return;
+                }
+
+                try {
+                    const history = await window.pywebview.api.get_recent_scans();
+                    recentScansListContainer.innerHTML = '';
+
+                    if (history && history.length > 0) {
+                        history.forEach(item => {
+                            const itemDiv = document.createElement('div');
+                            itemDiv.className = 'recent-item';
+                            // 存储完整路径到 data-* 属性，以便点击时获取
+                            itemDiv.dataset.fullPath = item.saved_file_full_path || "";
+                            itemDiv.dataset.imageName = item.image_name || ""; // 用于可能的其他操作
+
+                            let iconSvg = '';
+                            let iconColor = 'text-slate-500';
+                            if (item.output_format === 'pdf') {
+                                iconColor = 'text-red-500';
+                                iconSvg = `<svg class="file-icon-sm ${iconColor}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a2 2 0 002 2h10a2 2 0 002-2V7.414a2 2 0 00-.586-1.414l-4-4A2 2 0 009.414 1H5a2 2 0 00-2 2v14zm6-11a1 1 0 011-1h2a1 1 0 110 2H10a1 1 0 01-1-1zM9 9a1 1 0 000 2h2a1 1 0 100-2H9z" clip-rule="evenodd" /></svg>`;
+                            } else if (item.output_format === 'docx') {
+                                iconColor = 'text-blue-500';
+                                iconSvg = `<svg class="file-icon-sm ${iconColor}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a2 2 0 002 2h10a2 2 0 002-2V7.414a2 2 0 00-.586-1.414l-4-4A2 2 0 009.414 1H5a2 2 0 00-2 2v14zm10-4a1 1 0 100-2H7a1 1 0 100 2h6zm0-3a1 1 0 100-2H7a1 1 0 100 2h6zm-4-3a1 1 0 100-2H7a1 1 0 100 2h2z" clip-rule="evenodd" /></svg>`;
+                            } else if (item.output_format === 'xlsx') {
+                                iconColor = 'text-green-500';
+                                iconSvg = `<svg class="file-icon-sm ${iconColor}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25M9 16.5v.75m3-3v3M15 12v5.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>`;
+                            } else {
+                                iconSvg = `<svg class="file-icon-sm ${iconColor}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12.75h7.5m-7.5 3H12M10.5 2.25H5.625A2.25 2.25 0 003.375 4.5v15A2.25 2.25 0 005.625 21.75h12.75A2.25 2.25 0 0020.625 19.5V11.25a9 9 0 00-9-9h-1.5" /></svg>`;
+                            }
+
+                            itemDiv.innerHTML = `
+                                <div class="flex items-center recent-item-info">
+                                    ${iconSvg}
+                                    <div>
+                                        <p class="text-sm font-medium text-slate-700 truncate" title="${item.image_name} -> ${item.output_name}">${item.image_name} -> ${item.output_name}</p>
+                                        <p class="text-xs text-slate-500">${item.timestamp}</p>
+                                    </div>
+                                </div>
+                            `;
+                            // 添加点击事件以打开文件
+                            itemDiv.addEventListener('click', async () => {
+                                if (item.saved_file_full_path) {
+                                    updateStatus(`尝试打开: ${item.output_name}`);
+                                    try {
+                                        const open_response = await window.pywebview.api.open_file_in_system(item.saved_file_full_path);
+                                        updateStatus(open_response.message, open_response.status !== "成功");
+                                    } catch (e_open) {
+                                        updateStatus(`打开文件失败: ${e_open.message || String(e_open)}`, true);
+                                    }
+                                } else {
+                                    updateStatus("错误: 此历史记录没有有效的保存路径。", true);
+                                }
+                            });
+                            recentScansListContainer.appendChild(itemDiv);
+                        });
+                        updateStatus("最近扫描记录已加载。");
+                    } else {
+                        recentScansListContainer.innerHTML = '<div class="text-center text-sm text-slate-500 p-4">无记录</div>';
+                        updateStatus("暂无扫描记录。");
+                    }
+                } catch (e) {
+                    console.error("加载最近扫描失败:", e);
+                    updateStatus("加载最近扫描记录失败: " + (e.message || String(e)), true);
+                    recentScansListContainer.innerHTML = '<div class="text-center text-sm text-red-500 p-4">加载历史失败</div>';
+                }
+            }
+
+            window.addEventListener('pywebviewready', function() {
+                console.log("pywebviewready event fired. Initializing app functions.");
+                loadAndDisplayRecentScans();
+            });
+
+        });
+    </script>
+
+</body>
+</html>

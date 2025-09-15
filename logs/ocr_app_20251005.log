@@ -1,0 +1,32 @@
+2025-10-05 15:09:04,246 - OCR_APP - INFO - logger.pyw:72 - 性能监控已启动
+2025-10-05 15:09:04,246 - OCR_APP - INFO - logger.pyw:72 - API实例初始化完成，已集成错误管理和性能监控
+2025-10-05 15:11:27,369 - OCR_APP - INFO - logger.pyw:72 - 性能监控已启动
+2025-10-05 15:11:27,370 - OCR_APP - INFO - logger.pyw:72 - API实例初始化完成，已集成错误管理和性能监控
+2025-10-05 15:51:58,224 - OCR_APP - INFO - logger.pyw:72 - 性能监控已启动
+2025-10-05 15:51:58,225 - OCR_APP - INFO - logger.pyw:72 - API实例初始化完成，已集成错误管理和性能监控
+2025-10-05 17:09:58,983 - OCR_APP - INFO - logger.pyw:72 - [DEBUG] API密钥加载完成，长度: 36
+2025-10-05 17:09:58,983 - OCR_APP - INFO - logger.pyw:72 - [DEBUG] 创建OCR服务，传入API密钥长度: 36
+2025-10-05 17:09:58,983 - OCR_APP - INFO - logger.pyw:72 - [DEBUG] OCR服务初始化，接收到API密钥长度: 36
+2025-10-05 17:09:58,985 - OCR_APP - INFO - logger.pyw:72 - 缓存管理器初始化完成: 内存缓存=200, 磁盘缓存=1000, 缓存目录=C:\Users\21240\AppData\Local\Temp\ocr_cache
+2025-10-05 17:09:58,985 - OCR_APP - INFO - logger.pyw:72 - OCR服务初始化完成，已集成错误管理和性能监控
+2025-10-05 17:09:58,985 - OCR_APP - INFO - logger.pyw:72 - 内存缓存已清空
+2025-10-05 17:09:58,985 - OCR_APP - INFO - logger.pyw:72 - OCR缓存已清理，清理了 0 个旧缓存项
+2025-10-05 17:09:58,985 - OCR_APP - INFO - logger.pyw:72 - 缓存统计: 总请求=0, 命中率=0.0%, 缓存大小=0.00MB
+2025-10-05 17:09:58,986 - OCR_APP - INFO - logger.pyw:72 - 错误历史已清理
+2025-10-05 17:09:58,986 - OCR_APP - INFO - logger.pyw:72 - 所有缓存和错误历史已清除
+2025-10-05 17:09:58,987 - OCR_APP - INFO - logger.pyw:72 - 用户触发文件选择对话框
+2025-10-05 17:10:00,416 - OCR_APP - INFO - logger.pyw:72 - 用户取消了文件选择
+2025-10-05 17:10:01,060 - OCR_APP - INFO - logger.pyw:72 - 内存缓存已清空
+2025-10-05 17:10:01,060 - OCR_APP - INFO - logger.pyw:72 - OCR缓存已清理，清理了 0 个旧缓存项
+2025-10-05 17:10:01,061 - OCR_APP - INFO - logger.pyw:72 - 缓存统计: 总请求=0, 命中率=0.0%, 缓存大小=0.00MB
+2025-10-05 17:10:01,061 - OCR_APP - INFO - logger.pyw:72 - 错误历史已清理
+2025-10-05 17:10:01,061 - OCR_APP - INFO - logger.pyw:72 - 所有缓存和错误历史已清除
+2025-10-05 17:10:01,063 - OCR_APP - INFO - logger.pyw:72 - 用户触发文件选择对话框
+2025-10-05 17:10:02,442 - OCR_APP - INFO - logger.pyw:72 - 用户取消了文件选择
+2025-10-05 17:10:03,939 - OCR_APP - INFO - logger.pyw:72 - 内存缓存已清空
+2025-10-05 17:10:03,939 - OCR_APP - INFO - logger.pyw:72 - OCR缓存已清理，清理了 0 个旧缓存项
+2025-10-05 17:10:03,940 - OCR_APP - INFO - logger.pyw:72 - 缓存统计: 总请求=0, 命中率=0.0%, 缓存大小=0.00MB
+2025-10-05 17:10:03,940 - OCR_APP - INFO - logger.pyw:72 - 错误历史已清理
+2025-10-05 17:10:03,940 - OCR_APP - INFO - logger.pyw:72 - 所有缓存和错误历史已清除
+2025-10-05 17:10:03,943 - OCR_APP - INFO - logger.pyw:72 - 用户触发文件选择对话框
+2025-10-05 17:10:05,106 - OCR_APP - INFO - logger.pyw:72 - 用户取消了文件选择
