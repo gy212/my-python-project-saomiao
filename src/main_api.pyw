@@ -326,7 +326,7 @@ class Api:
                     get_logger().warning(f"文件数据格式无效: {file_data}")
                     continue
                 
-                file_name = file_data['name']
+                file_name = os.path.basename(file_data['name'])
                 file_content = file_data['data']
                 
                 # 验证文件扩展名
