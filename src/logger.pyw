@@ -233,7 +233,7 @@ if __name__ == "__main__":
     
     # 测试成功响应
     success_response = error_handler.create_success_response(
-        data={"test": "data"}, 
+        data={"tests": "data"},
         message="测试成功"
     )
     print("成功响应:", success_response)

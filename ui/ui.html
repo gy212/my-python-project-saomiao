@@ -1,1754 +1,497 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM 图像扫描与导出</title>
-    <!-- 预加载关键资�?-->
-    <link rel="preconnect" href="https://cdn.tailwindcss.com">
-    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
-    <!-- 异步加载TailwindCSS -->
-    <script>
-        // 创建一个轻量级的加载指示器
-        document.documentElement.style.visibility = 'hidden';
-        
-        // 异步加载TailwindCSS
-        const tailwindScript = document.createElement('script');
-        tailwindScript.src = 'https://cdn.tailwindcss.com';
-        tailwindScript.async = true;
-        const tailwindFallbackTimer = setTimeout(() => {
-            document.documentElement.style.visibility = 'visible';
-        }, 4000);
-
-        tailwindScript.onload = function() {
-            clearTimeout(tailwindFallbackTimer);
-            // CSS加载完成后显示页�?
-            document.documentElement.style.visibility = 'visible';
-        };
-        tailwindScript.onerror = function() {
-            clearTimeout(tailwindFallbackTimer);
-            document.documentElement.style.visibility = 'visible';
-            console.warn('Tailwind CSS CDN 加载失败，已启用兜底样式�?);
-        };
-        document.head.appendChild(tailwindScript);
-    </script>
+    <title>LLM 图像扫描与导出 (液态玻璃版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 导入现代字体 */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-        
+
+        :root {
+            --mouse-x: 50%;
+            --mouse-y: 50%;
+        }
+
         html, body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 0;
-            padding: 0;
-            min-height: 100vh;
-            font-weight: 400;
-            line-height: 1.6;
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9; /* slate-100 */
+            transition: background-color 0.3s ease;
+            margin: 0; padding: 0; min-height: 100vh;
         }
-        .app-shell {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            max-width: 1400px;
-            margin: 0 auto;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border-radius: 24px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        .dark, .dark html, .dark body { background-color: #0f172a !important; }
+
+        .glass-pane {
+            position: relative;
+            background: rgba(255, 255, 255, 0.45);
+            backdrop-filter: blur(24px) saturate(1.2);
+            border-radius: 16px;
+            box-shadow:
+                    0 0 0 1.5px rgba(255, 255, 255, 0.5),
+                    inset 0 2px 4px rgba(255, 255, 255, 0.8),
+                    0 20px 50px -15px rgba(0, 0, 0, 0.25);
+            transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
             overflow: hidden;
         }
-        .main-content-area {
-            flex-grow: 1;
-            display: flex;
-            gap: 2rem;
-            padding: 2rem;
-            background: transparent;
+        .dark .glass-pane {
+            background: rgba(30, 41, 59, 0.45);
+            box-shadow:
+                    0 0 0 1.5px rgba(255, 255, 255, 0.1),
+                    inset 0 2px 2px rgba(255, 255, 255, 0.1),
+                    0 20px 50px -15px rgba(0, 0, 0, 0.5);
         }
-        
-        /* 响应式布局优化 */
+
+        .glass-pane:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow:
+                    0 0 0 1.5px rgba(255, 255, 255, 0.6),
+                    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                    0 25px 60px -15px rgba(0, 0, 0, 0.35);
+        }
+
+        .glass-pane::before {
+            content: '';
+            position: absolute;
+            top: var(--mouse-y);
+            left: var(--mouse-x);
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 65%);
+            opacity: 0;
+            transition: opacity 0.5s, top 0.2s ease-out, left 0.2s ease-out;
+            pointer-events: none;
+        }
+        .dark .glass-pane::before {
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 65%);
+        }
+        .glass-pane:hover::before {
+            opacity: 1;
+        }
+
+        .app-shell { display: flex; flex-direction: column; min-height: 100vh; max-width: 1400px; margin: 0 auto; }
+        .main-content-area { flex-grow: 1; display: flex; gap: 2rem; padding: 2rem; }
+        .left-panel { flex: 2; display: flex; flex-direction: column; gap: 1.5rem; }
+        .right-panel { flex: 1; display: flex; flex-direction: column; padding: 2rem; }
+
         @media (max-width: 1024px) {
-            .main-content-area {
-                flex-direction: column;
-                gap: 1rem;
-                padding: 1rem;
-            }
-            .left-panel {
-                flex: none;
-            }
-            .right-panel {
-                flex: none;
-                order: -1; /* 在小屏幕上将右侧面板移到顶部 */
-            }
+            .main-content-area { flex-direction: column; gap: 1rem; padding: 1rem; }
+            .left-panel, .right-panel { flex: none; }
         }
-        
         @media (max-width: 768px) {
-            .app-shell {
-                max-width: 100%;
-                margin: 0;
-            }
-            .main-content-area {
-                padding: 0.75rem;
-                gap: 0.75rem;
-            }
-            header .max-w-7xl {
-                padding-left: 1rem;
-                padding-right: 1rem;
-            }
-            .card {
-                padding: 1rem;
-            }
-            .right-panel {
-                padding: 1rem;
-            }
-            .grid.grid-cols-2 {
-                grid-template-columns: 1fr;
-                gap: 0.75rem;
-            }
-            .grid.grid-cols-1.md\\:grid-cols-2 {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            header h1 {
-                font-size: 1.125rem;
-            }
-            .main-content-area {
-                padding: 0.5rem;
-                gap: 0.5rem;
-            }
-            .card {
-                padding: 0.75rem;
-            }
-            .right-panel {
-                padding: 0.75rem;
-            }
-            .file-input-area {
-                padding: 1rem;
-            }
-            .convert-option-button, .merge-option-button {
-                padding: 0.75rem;
-                font-size: 0.875rem;
-            }
-            .convert-option-button svg {
-                width: 1.25rem;
-                height: 1.25rem;
-            }
-        }
-        .left-panel {
-            flex: 2;
-            display: flex;
-            flex-direction: column;
-            gap: 1.5rem;
-        }
-        .right-panel {
-            flex: 1;
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            padding: 2rem;
-            display: flex;
-            flex-direction: column;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
-        }
-        .right-panel:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-        }
-        .card {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(10px);
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            padding: 2rem;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            transition: all 0.3s ease;
-        }
-        .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-        }
-        .file-input-area {
-            display: block;
-            border: 3px dashed rgba(102, 126, 234, 0.3);
-            border-radius: 16px;
-            padding: 3rem;
-            text-align: center;
-            cursor: pointer;
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-        }
-        .file-input-area::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        .file-input-area:hover::before {
-            opacity: 1;
-        }
-        .file-input-area:hover {
-            border-color: rgba(102, 126, 234, 0.6);
-            transform: translateY(-4px);
-            box-shadow: 0 20px 50px rgba(102, 126, 234, 0.25);
-        }
-        .file-input-area:hover .upload-icon-container svg {
-            transform: scale(1.1) rotate(5deg);
-            color: #667eea;
-        }
-        .file-input-area.drag-over {
-            background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
-            border-color: #667eea;
-            border-style: solid;
-            transform: scale(1.02);
-        }
-        .file-input-area:focus-visible {
-            outline: 3px solid rgba(102, 126, 234, 0.6);
-            outline-offset: 4px;
+            .app-shell { border-radius: 0; }
+            .main-content-area, .right-panel, .card { padding: 1rem; }
         }
 
-        .convert-option-button {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 1.5rem;
-            border-radius: 16px;
-            border: 2px solid transparent;
-            font-weight: 600;
-            color: white;
-            transition: all 0.3s ease;
-            cursor: pointer;
-            text-align: center;
-            position: relative;
-            overflow: hidden;
-        }
-        .convert-option-button::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        .convert-option-button:hover::before {
-            opacity: 1;
-        }
-        .convert-option-button[data-format="word"] {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .convert-option-button[data-format="word"]:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(102, 126, 234, 0.4);
-        }
-        .convert-option-button[data-format="word"].selected {
-            border-color: rgba(255, 255, 255, 0.5);
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.3);
-        }
+        .toggle-switch { background: rgba(0,0,0,0.05); transition: background-color 0.3s; }
+        .dark .toggle-switch { background: rgba(0,0,0,0.2); }
+        .toggle-switch:hover { background: rgba(0,0,0,0.08); }
+        .dark .toggle-switch:hover { background: rgba(0,0,0,0.3); }
+        .toggle-switch > div.option-label { color: #475569; transition: color 0.4s ease-in-out; }
+        .dark .toggle-switch > div.option-label { color: #cbd5e1; }
 
-        .convert-option-button[data-format="pdf"] {
-            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
-        }
-        .convert-option-button[data-format="pdf"]:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 12px 40px rgba(255, 107, 107, 0.4);
-        }
-        .convert-option-button[data-format="pdf"].selected {
-            border-color: rgba(255, 255, 255, 0.5);
-            box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.3);
-        }
+        #format-highlight, #merge-highlight { transition: transform 0.4s ease-in-out, background-position 0.4s ease-in-out, box-shadow 0.4s ease-in-out; }
+        #format-highlight { background-image: linear-gradient(135deg, #764ba2, #667eea, #ee5a24, #ff6b6b); background-size: 200% 200%; background-position: 25% 50%; box-shadow: 0 8px 25px rgba(118, 75, 162, 0.3); }
+        #format-toggle.pdf-selected #format-highlight { background-position: 75% 50%; box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3); transform: translateX(calc(100% + 0.5rem)); }
+        #merge-highlight { background-image: linear-gradient(135deg, #2563eb, #3b82f6, #15803d, #16a34a); background-size: 200% 200%; background-position: 25% 50%; box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3); }
+        #merge-toggle.combined-selected #merge-highlight { background-position: 75% 50%; box-shadow: 0 8px 25px rgba(22, 163, 74, 0.3); transform: translateX(calc(100% + 0.5rem)); }
 
-        .convert-option-button svg {
-            width: 1.75rem;
-            height: 1.75rem;
-            margin-bottom: 0.5rem;
-            color: white;
-        }
+        #process-btn { background-color: rgba(16, 185, 129, 0.3); transition: background-color 0.3s, transform 0.3s, box-shadow 0.3s; }
+        #process-btn:hover { background-color: rgba(16, 185, 129, 0.5); }
 
-        /* 合并按钮专用样式 */
-        .merge-option-button {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            border: 1px solid #d1d5db;
-            font-weight: 500;
-            color: #374151;
-            background-color: #f9fafb;
-            transition: all 0.15s ease-in-out;
-            cursor: pointer;
-            text-align: center;
-        }
-        .merge-option-button:hover {
-            background-color: #f3f4f6;
-            border-color: #9ca3af;
-        }
-        .merge-option-button.selected {
-            background-color: #3b82f6;
-            color: white;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 2px white, 0 0 0 4px #3b82f6;
-        }
-        .recent-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0.75rem;
-            border-radius: 0.375rem;
-            transition: background-color 0.2s;
-            border-bottom: 1px solid #f1f5f9;
-            cursor: pointer; /* 使历史条目看起来可点�?*/
-        }
-        .recent-item:last-child {
-            border-bottom: none;
-        }
-        .recent-item:hover {
-            background-color: #f0f9ff; /* Tailwind sky-50 for hover */
-        }
-        .file-icon-sm {
-            width: 1.25rem;
-            height: 1.25rem;
-            margin-right: 0.75rem;
-            flex-shrink: 0;
-        }
-        .recent-item-info {
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-        }
-        .recent-scans-list::-webkit-scrollbar { width: 6px; }
-        .recent-scans-list::-webkit-scrollbar-track { background: #f8fafc; border-radius: 3px;}
-        .recent-scans-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px;}
-        .recent-scans-list::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .file-input-area, .inset-panel { transition: all 0.3s ease-in-out; }
+        .file-input-area { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; background-color: transparent; border-radius: 20px; text-align: center; cursor: pointer; box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.15), inset -2px -2px 6px rgba(255, 255, 255, 0.7); }
+        .dark .file-input-area { box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), inset -2px -2px 6px rgba(255, 255, 255, 0.05); }
+        .file-input-area:hover { background-color: rgba(255, 255, 255, 0.05); box-shadow: inset 3px 3px 7px rgba(0, 0, 0, 0.15), inset -3px -3px 8px rgba(255, 255, 255, 0.7); }
+        .dark .file-input-area:hover { background-color: rgba(0, 0, 0, 0.1); box-shadow: inset 3px 3px 7px rgba(0, 0, 0, 0.5), inset -3px -3px 8px rgba(255, 255, 255, 0.05); }
 
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 50;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.3s ease, visibility 0s 0.3s linear;
-        }
-        .modal-overlay.active {
-            opacity: 1;
-            visibility: visible;
-            transition: opacity 0.3s ease, visibility 0s 0s linear;
-        }
-        .modal-content {
-            background-color: white;
-            padding: 2rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-            width: 90%;
-            max-width: 400px;
-            transform: scale(0.95);
-            transition: transform 0.3s ease;
-        }
-        .modal-overlay.active .modal-content {
-            transform: scale(1);
-        }
-        #image-preview-area img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-            border-radius: 0.375rem;
-        }
+        .inset-panel { background-color: transparent !important; border: none !important; box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.15), inset -2px -2px 6px rgba(255, 255, 255, 0.7) !important; border-radius: 20px !important; }
+        .dark .inset-panel { box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), inset -2px -2px 6px rgba(255, 255, 255, 0.05) !important; }
 
-        /* 暗色主题样式 */
-        .dark,
-        .dark html,
-        .dark body {
-            background-color: #0f172a !important;
-            color: #f1f5f9 !important;
-        }
-        .dark .app-shell {
-            background-color: #0f172a;
-        }
-        .dark header {
-            background-color: #1e293b;
-            border-bottom: 1px solid #334155;
-        }
-        .dark h1 {
-            color: #f1f5f9;
-        }
-        .dark h2, .dark h3 {
-            color: #f1f5f9;
-        }
-        .dark .card {
-            background-color: #1e293b;
-            border: 1px solid #334155;
-        }
-        .dark .file-input-area {
-            background-color: #334155;
-            border-color: #475569;
-            color: #cbd5e1;
-        }
-        .dark .file-input-area:hover {
-            background-color: #475569;
-        }
-        .dark .file-input-area.drag-over {
-            background-color: #1e40af;
-            border-color: #3b82f6;
-        }
-        .dark .convert-option-button {
-            border-color: #475569;
-        }
-        .dark .merge-option-button {
-            background-color: #334155;
-            border-color: #475569;
-            color: #cbd5e1;
-        }
-        .dark .merge-option-button:hover {
-            background-color: #475569;
-        }
-        .dark .merge-option-button.selected {
-            background-color: #3b82f6;
-            color: white;
-            border-color: #3b82f6;
-        }
-        .dark .recent-item:hover {
-            background-color: #334155;
-        }
-        .dark textarea {
-            background-color: #334155;
-            border-color: #475569;
-            color: #f1f5f9;
-        }
-        .dark textarea:focus {
-            border-color: #3b82f6;
-        }
-        .dark .modal-content {
-            background-color: #1e293b;
-            color: #f1f5f9;
-        }
-        .dark button:not(.convert-option-button):not(.merge-option-button) {
-            color: #cbd5e1;
-        }
-        .dark button:not(.convert-option-button):not(.merge-option-button):hover {
-            background-color: #334155;
-            color: #f1f5f9;
-        }
-        .dark #image-preview-area {
-            background-color: #334155;
-            border-color: #475569;
-            color: #94a3b8;
-        }
-        /* 新增的暗色主题样�?*/
-        .dark footer {
-            background-color: #1e293b;
-            border-top: 1px solid #334155;
-        }
-        .dark input {
-            background-color: #334155;
-            border-color: #475569;
-            color: #f1f5f9;
-        }
-        .dark input:focus {
-            border-color: #3b82f6;
-        }
-        .dark .text-slate-600 {
-            color: #94a3b8 !important;
-        }
-        .dark .text-slate-700 {
-            color: #cbd5e1 !important;
-        }
-        .dark .text-slate-800 {
-            color: #f1f5f9 !important;
-        }
-        .dark .text-slate-500 {
-            color: #64748b !important;
-        }
-        .dark .text-slate-400 {
-            color: #64748b !important;
-        }
-        .dark .bg-slate-50 {
-            background-color: #334155 !important;
-        }
-        .dark .bg-slate-100 {
-            background-color: #475569 !important;
-        }
-        .dark .bg-slate-200 {
-            background-color: #475569 !important;
-        }
-        .dark .border-slate-200 {
-            border-color: #475569 !important;
-        }
-        .dark .border-slate-300 {
-            border-color: #475569 !important;
-        }
-        .dark .hover\:bg-slate-100:hover {
-            background-color: #334155 !important;
-        }
-        .dark .hover\:bg-slate-200:hover {
-            background-color: #475569 !important;
-        }
-        .dark .hover\:bg-red-50:hover {
-            background-color: #7f1d1d !important;
-        }
-        .dark .border-red-200 {
-            border-color: #dc2626 !important;
-        }
+        textarea, input { background-color: rgba(255,255,255,0.2); }
+        .dark textarea, .dark input { background-color: rgba(0,0,0,0.2); }
+        .dark #api-key-input { border-color: #4b5563; }
+
+        #theme-toggle-btn { color: #1e293b; transition: all 0.2s ease-in-out; }
+        .dark #theme-toggle-btn { color: #e2e8f0; }
+        #theme-toggle-btn:hover, #settings-btn:hover { transform: scale(1.1) rotate(15deg); }
+        #settings-btn { color: #1e293b; transition: all 0.2s ease-in-out; }
+        .dark #settings-btn { color: #e2e8f0; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 50; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s 0.3s; }
+        .modal-overlay.active { opacity: 1; visibility: visible; transition-delay: 0s; }
+        .modal-content { width: 90%; max-width: 420px; transform: scale(0.95); transition: transform 0.3s ease; }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+
     </style>
 </head>
-<body>
-    <div class="app-shell">
-        <header class="bg-white/80 backdrop-blur-md shadow-lg sticky top-0 z-20 border-b border-white/20">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex items-center justify-between h-20">
-                    <h1 class="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">LLM 图像扫描与导�?/h1>
-                    <div class="flex items-center space-x-3">
-                        <button id="theme-toggle-btn" class="p-3 rounded-xl text-slate-600 hover:bg-white/50 hover:text-slate-800 transition-all duration-300 backdrop-blur-sm" title="切换主题">
-                            <svg id="theme-icon-light" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                            </svg>
-                            <svg id="theme-icon-dark" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 hidden">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-                            </svg>
-                            <span class="sr-only">切换主题</span>
-                        </button>
-                        <button id="settings-btn" class="p-3 rounded-xl text-slate-600 hover:bg-white/50 hover:text-slate-800 transition-all duration-300 backdrop-blur-sm">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.646.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 1.255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.333.184-.582.496-.646.87l-.212 1.282a1.125 1.125 0 01-1.11.94h-2.594a1.125 1.125 0 01-1.11-.94l-.213-1.282c-.062-.374-.312-.686-.645-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-1.255c.007-.378-.137-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.184.582-.496.645-.87l.212-1.281z" />
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            <span class="sr-only">设置API密钥</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </header>
+<body class="dark:text-slate-200">
 
-        <div class="main-content-area">
-            <div class="left-panel">
-                <div class="card">
-                                        <input type="file" id="file-upload-trigger" multiple accept=".jpg,.jpeg,.png,.bmp,.tiff,.webp" hidden>
-<label for="file-upload-trigger" class="file-input-area" role="button" tabindex="0" aria-label="选择要处理的图片（支持拖拽）">
-                        <div class="upload-icon-container">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-16 h-16 text-indigo-500 mx-auto mb-4 transition-all duration-300">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-                            </svg>
-                        </div>
-                        <div class="upload-text-container">
-                            <p class="text-xl font-semibold text-indigo-600 mb-2">点击选择图片 (可多�?</p>
-                            <p class="text-sm text-slate-500 mb-4">或将文件拖拽到此�?/p>
-                            <div class="supported-formats">
-                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 mr-2">JPG</span>
-                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800 mr-2">PNG</span>
-                                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">PDF</span>
-                            </div>
-                        </div>
-                        <div id="file-path-display" class="mt-6 text-sm text-slate-600 break-all bg-slate-50 rounded-lg p-3 border border-slate-200">未选择图片</div>
-                    </label>
-                </div>
-
-                <div class="card flex-grow flex flex-col">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
-                        <div class="flex flex-col">
-                            <div class="flex items-center justify-between mb-3">
-                                <h3 class="text-lg font-semibold text-slate-700">图片预览</h3>
-                                <span class="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded-full">首张</span>
-                            </div>
-                            <div id="image-preview-area" class="flex-grow border-2 border-dashed border-slate-200 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center text-slate-400 min-h-[300px] p-4 overflow-hidden transition-all duration-300 hover:border-indigo-300 hover:bg-gradient-to-br hover:from-indigo-50 hover:to-slate-100">
-                                <div class="text-center">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-12 h-12 mx-auto mb-2 text-slate-300">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                                    </svg>
-                                    <span class="text-sm font-medium">预览�?/span>
-                                    <p class="text-xs text-slate-400 mt-1">选择图片后将显示预览</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="flex flex-col">
-                            <div class="flex items-center justify-between mb-3">
-                                <h3 class="text-lg font-semibold text-slate-700">提取的文�?/h3>
-                                <button id="copy-text-btn" aria-label="复制提取文本" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded-md hover:bg-indigo-50 transition-colors duration-200" style="display: none;">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 inline mr-1">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.375a2.25 2.25 0 0 1-2.25-2.25V6.108c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
-                                    </svg>
-                                    复制
-                                </button>
-                            </div>
-                            <textarea id="extracted-text-area" class="w-full flex-grow p-4 border-2 border-slate-200 rounded-xl shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm resize-none min-h-[300px] transition-all duration-200 bg-white" placeholder="提取后的文本将显示在这里...&#10;&#10;支持的功能：&#10;�?自动识别文字&#10;�?支持多种语言&#10;�?可复制和编辑文本"></textarea>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card" id="format-options">
-                    <h3 class="text-md font-semibold text-slate-700 mb-3">转换�?/h3>
-                    <div class="grid grid-cols-2 gap-4">
-                        <button class="convert-option-button selected" data-format="word">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
-                            Word
-                        </button>
-                        <button class="convert-option-button" data-format="pdf">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
-                            PDF
-                        </button>
-                    </div>
-                </div>
-
-                <div class="card" id="merge-options">
-                    <h3 class="text-md font-semibold text-slate-700 mb-3">导出方式</h3>
-                    <div class="grid grid-cols-2 gap-4">
-                        <button class="merge-option-button selected" data-merge="separate">逐张保存</button>
-                        <button class="merge-option-button" data-merge="combined">合并为单一文件</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="right-panel">
-                <div class="flex items-center justify-between mb-3">
-                    <h2 class="text-lg font-semibold text-slate-700">最近扫�?/h2>
-                    <button id="clear-history-btn" class="text-xs text-blue-600 hover:text-blue-800 font-medium">清除历史</button>
-                </div>
-                <div id="recent-scans-list-container" class="recent-scans-list flex-grow overflow-y-auto space-y-1 pr-1 mb-4">
-                </div>
-                
-                <!-- 性能统计区域 -->
-                <div class="card mb-4">
-                    <div class="flex items-center justify-between mb-2">
-                        <h3 class="text-sm font-semibold text-slate-700">性能统计</h3>
-                        <button id="refresh-stats-btn" class="text-xs text-blue-600 hover:text-blue-800 font-medium">刷新</button>
-                    </div>
-                    <div id="performance-stats" class="space-y-2 text-xs">
-                        <div class="flex justify-between">
-                            <span class="text-slate-600">CPU使用�?</span>
-                            <span id="cpu-usage" class="font-medium">--</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-600">内存使用:</span>
-                            <span id="memory-usage" class="font-medium">--</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-600">处理任务�?</span>
-                            <span id="task-count" class="font-medium">--</span>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- 错误统计区域 -->
-                <div class="card">
-                    <div class="flex items-center justify-between mb-2">
-                        <h3 class="text-sm font-semibold text-slate-700">错误统计</h3>
-                        <button id="export-errors-btn" class="text-xs text-blue-600 hover:text-blue-800 font-medium">导出</button>
-                    </div>
-                    <div id="error-stats" class="space-y-2 text-xs">
-                        <div class="flex justify-between">
-                            <span class="text-slate-600">总错误数:</span>
-                            <span id="total-errors" class="font-medium">--</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-600">严重错误:</span>
-                            <span id="critical-errors" class="font-medium text-red-600">--</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="text-slate-600">最近错�?</span>
-                            <span id="recent-errors" class="font-medium">--</span>
-                        </div>
-                    </div>
+<div class="app-shell">
+    <header class="bg-transparent shadow-none sticky top-0 z-20 glass-pane mx-2 mt-2">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-20">
+                <h1 class="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">LLM 图像扫描与导出</h1>
+                <div class="flex items-center space-x-3">
+                    <button id="settings-btn" class="p-2 rounded-2xl glass-pane">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-1.007 1.11-1.226.55-.22 1.156-.22 1.706 0 .55.22 1.02.684 1.11 1.226l.082.498a1.5 1.5 0 001.458 1.084h.592c.667 0 1.28.346 1.64.892.36.546.36 1.228 0 1.774a1.79 1.79 0 01-1.64.893h-.592a1.5 1.5 0 00-1.458 1.084l-.082.498c-.09.542-.56 1.007-1.11 1.226-.55.22-1.156-.22-1.706 0-.55-.22-1.02-.684-1.11-1.226l-.082-.498a1.5 1.5 0 00-1.458-1.084h-.592c-.667 0-1.28-.346-1.64-.892-.36-.546-.36-1.228 0-1.774.36-.546.973-.893 1.64-.893h.592a1.5 1.5 0 001.458-1.084l.082-.498zM12 15a3 3 0 100-6 3 3 0 000 6z" /></svg>
+                    </button>
+                    <button id="theme-toggle-btn" class="p-2 rounded-2xl glass-pane">
+                        <svg id="theme-icon-light" class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                        <svg id="theme-icon-dark" class="w-6 h-6 hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" /></svg>
+                    </button>
                 </div>
             </div>
         </div>
+    </header>
 
-        <footer class="bg-white/80 backdrop-blur-md shadow-top sticky bottom-0 z-10 mt-auto border-t border-slate-200/50">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-                 <div id="status-bar" class="text-sm text-slate-600 mb-3 text-center font-medium">准备就绪</div>
-                
-                <!-- 异步处理进度�?-->
-                <div id="async-progress-container" class="mb-4 hidden">
-                    <div class="bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-slate-200/50 shadow-sm">
+    <div class="main-content-area">
+        <div class="left-panel">
+            <div class="card p-6 glass-pane flex flex-col">
+                <input type="file" id="file-upload-trigger" multiple accept=".jpg,.jpeg,.png,.bmp,.tiff,.webp" hidden>
+                <label for="file-upload-trigger" class="file-input-area flex-grow" role="button">
+                    <svg class="w-16 h-16 text-indigo-500 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>
+                    <p class="text-xl font-semibold text-indigo-600 dark:text-indigo-400 mb-2">点击选择图片 (可多选)</p>
+                    <p class="text-sm text-slate-500 mb-4">或将文件拖拽到此处</p>
+                </label>
+            </div>
+            <div class="card p-6 flex-grow flex flex-col glass-pane">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+                    <div class="flex flex-col">
+                        <h3 class="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-3">图片预览</h3>
+                        <div id="image-preview-area" class="flex-grow flex items-center justify-center text-slate-400 p-2 inset-panel"></div>
+                    </div>
+                    <div class="flex flex-col">
                         <div class="flex items-center justify-between mb-3">
-                            <span class="text-sm font-semibold text-slate-700 flex items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 mr-2 text-indigo-500">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-                                </svg>
-                                处理进度
-                            </span>
-                            <span id="async-progress-text" class="text-sm text-slate-600 bg-slate-100 px-2 py-1 rounded-full font-mono">0/0</span>
+                            <h3 class="text-lg font-semibold text-slate-700 dark:text-slate-300">提取的文本</h3>
+                            <button id="copy-text-btn" class="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium px-2 py-1 rounded-md hover:bg-black/5 dark:hover:bg-white/10" style="display: none;">复制</button>
                         </div>
-                        <div class="w-full bg-slate-200 rounded-full h-3 mb-3 overflow-hidden">
-                            <div id="async-progress-bar" class="bg-gradient-to-r from-indigo-500 to-purple-600 h-3 rounded-full transition-all duration-500 ease-out relative overflow-hidden" style="width: 0%">
-                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
-                            </div>
-                        </div>
-                        <div class="flex justify-between items-center">
-                            <span id="async-current-task" class="text-xs text-slate-500 flex items-center">
-                                <div class="w-2 h-2 bg-indigo-400 rounded-full mr-2 animate-pulse"></div>
-                                等待开�?..
-                            </span>
-                            <button id="cancel-async-btn" class="text-xs text-red-600 hover:text-red-800 font-medium px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-50 transition-all duration-200 flex items-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-3 h-3 mr-1">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
-                                </svg>
-                                取消
-                            </button>
-                        </div>
+                        <textarea id="extracted-text-area" class="w-full flex-grow p-4 focus:ring-2 focus:ring-indigo-500 inset-panel" placeholder="处理后的文本将显示在这里..."></textarea>
                     </div>
                 </div>
-
-                <!-- 处理模式选择 -->
-                <div class="flex gap-3 mb-2">
-                    <button id="sync-process-btn" aria-label="开始同步处理" class="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-semibold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center text-lg group transform hover:scale-[1.02]" aria-label="��ʼͬ������">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6 mr-3 group-hover:scale-110 transition-transform duration-200">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.04l-.821 1.316z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-                        </svg>
-                        同步处理
-                    </button>
-                    <button id="async-process-btn" aria-label="开始异步处理" class="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold py-4 px-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center text-lg group transform hover:scale-[1.02]" aria-label="��ʼ�첽����">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6 mr-3 group-hover:scale-110 transition-transform duration-200">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-                        </svg>
-                        异步处理
-                    </button>
+            </div>
+            <div class="card p-6 glass-pane">
+                <h3 class="text-md font-semibold text-slate-700 dark:text-slate-300 mb-4">转换选项</h3>
+                <div id="format-toggle" class="toggle-switch glass-pane relative flex items-center w-full h-16 rounded-2xl p-2 cursor-pointer gap-2" role="radiogroup">
+                    <div id="format-highlight" class="absolute top-2 left-2 w-[calc(50%-0.5rem)] h-12 rounded-xl"></div>
+                    <div class="option-label flex-1 text-center z-10 font-semibold flex items-center justify-center gap-2" aria-label="Word">
+                        <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"></path></svg> Word
+                    </div>
+                    <div class="option-label flex-1 text-center z-10 font-semibold flex items-center justify-center gap-2" aria-label="PDF">
+                        <svg class="w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"></path></svg> PDF
+                    </div>
                 </div>
             </div>
-        </footer>
-    </div>
-
-    <div id="api-key-modal-overlay" class="modal-overlay">
-        <div class="modal-content">
-            <h3 class="text-lg font-semibold text-slate-800 mb-4">设置 API 密钥</h3>
-            <label for="api-key-input" class="block text-sm font-medium text-slate-700 mb-1">请输入您�?API 密钥:</label>
-            <input type="password" id="api-key-input" class="w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 mb-6" placeholder="您的API密钥">
-            <div class="flex justify-end gap-3">
-                <button id="cancel-api-key-btn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors">取消</button>
-                <button id="confirm-api-key-btn" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors">确定</button>
+            <div class="card p-6 glass-pane">
+                <h3 class="text-md font-semibold text-slate-700 dark:text-slate-300 mb-4">导出方式</h3>
+                <div id="merge-toggle" class="toggle-switch glass-pane relative flex items-center w-full h-16 rounded-2xl p-2 cursor-pointer gap-2" role="radiogroup">
+                    <div id="merge-highlight" class="absolute top-2 left-2 w-[calc(50%-0.5rem)] h-12 rounded-xl"></div>
+                    <div class="option-label flex-1 text-center z-10 font-semibold flex items-center justify-center gap-2" aria-label="逐张保存">
+                        逐张保存
+                    </div>
+                    <div class="option-label flex-1 text-center z-10 font-semibold flex items-center justify-center gap-2" aria-label="合并保存">
+                        合并保存
+                    </div>
+                </div>
             </div>
+        </div>
+        <div class="right-panel glass-pane">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-300">最近扫描</h2>
+                <button id="clear-history-btn" class="p-2 rounded-lg text-slate-500 hover:bg-red-100/50 dark:hover:bg-red-900/50 hover:text-red-600 dark:hover:text-red-500 transition-colors" title="清除历史"><svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.124-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.077-2.09.921-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"></path></svg></button>
+            </div>
+            <div id="recent-scans-list-container" class="recent-scans-list flex-grow overflow-y-auto -mr-2 pr-2"></div>
         </div>
     </div>
 
-    <div id="clear-history-modal-overlay" class="modal-overlay">
-        <div class="modal-content">
-            <h3 class="text-lg font-semibold text-slate-800 mb-2">确认操作</h3>
-            <p class="text-sm text-slate-600 mb-6">确定要清除所有最近扫描历史记录吗？此操作无法撤销�?/p>
-            <div class="flex justify-end gap-3">
-                <button id="cancel-clear-history-btn" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors">取消</button>
-                <button id="confirm-clear-history-btn" class="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors">确定清除</button>
-            </div>
+    <footer class="sticky bottom-0 z-10 mt-auto glass-pane mx-2 mb-2">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div id="status-bar" class="text-sm text-slate-600 dark:text-slate-400 mb-3 text-center font-medium">准备就绪</div>
+            <button id="process-btn" class="w-full text-white font-semibold py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] flex items-center justify-center gap-3 glass-pane">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.898 20.562L16.5 21.75l-.398-1.188a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.188-.398a2.25 2.25 0 001.423-1.423L16.5 15.75l.398 1.188a2.25 2.25 0 001.423 1.423L19.5 18.75l-1.188.398a2.25 2.25 0 00-1.423 1.423z"></path></svg>
+                开始处理
+            </button>
+        </div>
+    </footer>
+</div>
+
+<div id="api-key-modal-overlay" class="modal-overlay">
+    <div class="modal-content glass-pane p-8">
+        <h3 class="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-4">API Key 设置</h3>
+        <p class="text-slate-600 dark:text-slate-400 mb-6">请输入您的 LLM API Key。此密钥将保存在您的本地设备上，不会上传至任何服务器。</p>
+        <div class="mb-6">
+            <label for="api-key-input" class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">API Key</label>
+            <input type="password" id="api-key-input" class="inset-panel w-full p-3 text-slate-800 dark:text-slate-200" placeholder="在此输入您的密钥...">
+        </div>
+        <div class="flex justify-end gap-4">
+            <button id="cancel-api-key-btn" class="py-2 px-5 rounded-lg text-slate-700 dark:text-slate-300 font-semibold hover:bg-black/10 dark:hover:bg-white/10 transition">取消</button>
+            <button id="save-api-key-btn" class="py-2 px-5 rounded-lg text-white font-semibold bg-indigo-600 hover:bg-indigo-700 transition">保存</button>
         </div>
     </div>
+</div>
 
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- “液态玻璃”高光追踪脚本 (性能优化版) ---
+        const glassPanes = document.querySelectorAll('.glass-pane');
+        let mouseX = 0;
+        let mouseY = 0;
+        document.body.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        function animationLoop() {
+            glassPanes.forEach(pane => {
+                const rect = pane.getBoundingClientRect();
+                const x = mouseX - rect.left;
+                const y = mouseY - rect.top;
+                pane.style.setProperty('--mouse-x', `${x}px`);
+                pane.style.setProperty('--mouse-y', `${y}px`);
+            });
+            requestAnimationFrame(animationLoop);
+        }
+        animationLoop();
 
-    <script>
-        const VALID_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'];
+        // --- 全局元素获取 ---
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        const themeIconLight = document.getElementById('theme-icon-light');
+        const themeIconDark = document.getElementById('theme-icon-dark');
+        const settingsBtn = document.getElementById('settings-btn');
+        const apiKeyModalOverlay = document.getElementById('api-key-modal-overlay');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+        const cancelApiKeyBtn = document.getElementById('cancel-api-key-btn');
+        const statusBar = document.getElementById('status-bar');
+        const fileUploadInput = document.getElementById('file-upload-trigger');
+        const fileInputAreaLabel = document.querySelector('label[for="file-upload-trigger"]');
+        const imagePreviewArea = document.getElementById('image-preview-area');
+        const extractedTextArea = document.getElementById('extracted-text-area');
+        const copyTextBtn = document.getElementById('copy-text-btn');
+        const processBtn = document.getElementById('process-btn');
+        const formatToggle = document.getElementById('format-toggle');
+        const mergeToggle = document.getElementById('merge-toggle');
 
-        function isValidImageExtension(fileName) {
-            if (!fileName) return false;
-            const lowerName = fileName.toLowerCase();
-            return VALID_IMAGE_EXTENSIONS.some(ext => lowerName.endsWith(ext));
+        // --- 应用状态 ---
+        let selectedFiles = [];
+        let selectedOutputFormat = 'word';
+        let selectedMergeMode = 'separate';
+        
+        // --- 自动切换配置 ---
+        const IMAGE_COUNT_THRESHOLD = 3; // 图像数量阈值，超过此数量自动使用异步处理
+        let isAsyncProcessing = false;
+        let currentTaskIds = [];
+
+        // --- 功能函数 ---
+        function updateStatus(message, isError = false) {
+            if (statusBar) {
+                statusBar.textContent = message;
+                statusBar.style.color = isError ? '#ef4444' : '';
+            }
         }
 
-        window.selectedFilePaths = [];
-        window.selectedOutputFormat = 'word';
-
-        document.addEventListener('DOMContentLoaded', function() {
-            // ... (所有元素获取代码保持不�? ...
-            const fileInputAreaLabel = document.querySelector('label[for="file-upload-trigger"]');
-            const fileUploadInput = document.getElementById('file-upload-trigger');
-            const filePathDisplay = document.getElementById('file-path-display');
-            const copyTextBtn = document.getElementById('copy-text-btn');
-            const statusBar = document.getElementById('status-bar');
-            const convertButtons = document.querySelectorAll('#format-options .convert-option-button');
-            const mergeButtons = document.querySelectorAll('#merge-options .merge-option-button');
-            window.selectedMergeMode = 'separate';
-            
-            // 不再复用convert-option-button样式，使用专用的merge-option-button样式
-            
-            // 其他需要的DOM引用（之前遗漏，补齐�?
-            const syncProcessBtn = document.getElementById('sync-process-btn');
-            const asyncProcessBtn = document.getElementById('async-process-btn');
-            const asyncProgressContainer = document.getElementById('async-progress-container');
-            const asyncProgressBar = document.getElementById('async-progress-bar');
-            const asyncProgressText = document.getElementById('async-progress-text');
-            const asyncCurrentTask = document.getElementById('async-current-task');
-            const cancelAsyncBtn = document.getElementById('cancel-async-btn');
-            
-            const settingsBtn = document.getElementById('settings-btn');
-            const clearHistoryBtn = document.getElementById('clear-history-btn');
-            const imagePreviewArea = document.getElementById('image-preview-area');
-            const extractedTextArea = document.getElementById('extracted-text-area');
-            const recentScansListContainer = document.getElementById('recent-scans-list-container');
-            
-            syncCopyButtonVisibility();
-            
-            if (copyTextBtn && extractedTextArea) {
-                copyTextBtn.addEventListener('click', async () => {
-                    const textToCopy = extractedTextArea.value.trim();
-                    if (!textToCopy) {
-                        updateStatus('没有可复制的文本');
-                        return;
-                    }
-
-                    try {
-                        if (navigator.clipboard && navigator.clipboard.writeText) {
-                            await navigator.clipboard.writeText(textToCopy);
-                        } else {
-                            const tempTextarea = document.createElement('textarea');
-                            tempTextarea.value = textToCopy;
-                            tempTextarea.setAttribute('readonly', '');
-                            tempTextarea.style.position = 'absolute';
-                            tempTextarea.style.left = '-9999px';
-                            document.body.appendChild(tempTextarea);
-                            tempTextarea.select();
-                            document.execCommand('copy');
-                            document.body.removeChild(tempTextarea);
-                        }
-                        updateStatus('文本已复制到剪贴板');
-                    } catch (error) {
-                        console.error('复制文本失败:', error);
-                        updateStatus('复制文本失败: ' + (error.message || String(error)), true);
-                    }
-                });
+        function applyTheme(theme) {
+            if (theme === 'dark') {
+                document.body.classList.add('dark');
+                themeIconLight.classList.add('hidden');
+                themeIconDark.classList.remove('hidden');
+            } else {
+                document.body.classList.remove('dark');
+                themeIconLight.classList.remove('hidden');
+                themeIconDark.classList.add('hidden');
             }
+        }
 
-            if (extractedTextArea) {
-                extractedTextArea.addEventListener('input', syncCopyButtonVisibility);
-            }
-
-            const apiKeyModalOverlay = document.getElementById('api-key-modal-overlay');
-            const apiKeyInput = document.getElementById('api-key-input');
-            const confirmApiKeyBtn = document.getElementById('confirm-api-key-btn');
-            const cancelApiKeyBtn = document.getElementById('cancel-api-key-btn');
+        async function handleFileSelection(fileList) {
+            if (!fileList || fileList.length === 0) return;
+            selectedFiles = Array.from(fileList);
             
-            const clearHistoryModalOverlay = document.getElementById('clear-history-modal-overlay');
-            const confirmClearHistoryBtn = document.getElementById('confirm-clear-history-btn');
-            const cancelClearHistoryBtn = document.getElementById('cancel-clear-history-btn');
+            // 显示第一张图片预览
+            const reader = new FileReader();
+            reader.onload = (e) => { 
+                imagePreviewArea.innerHTML = `<img src="${e.target.result}" class="max-w-full max-h-full object-contain rounded-lg">`;
+            };
+            reader.readAsDataURL(selectedFiles[0]);
+            
+            // 根据图像数量自动确定处理模式
+            isAsyncProcessing = selectedFiles.length > IMAGE_COUNT_THRESHOLD;
+            const processingMode = isAsyncProcessing ? '异步' : '同步';
+            updateStatus(`已选择 ${selectedFiles.length} 个文件，将使用${processingMode}处理模式`);
+        }
 
-            // 状态栏更新函数（简化实现）
-            function updateStatus(message, isError = false) {
-                if (statusBar) {
-                    statusBar.textContent = message || '';
-                    statusBar.classList.toggle('error', !!isError);
-                }
-                (isError ? console.error : console.log)(message);
-            }
-
-            function syncCopyButtonVisibility() {
-                if (!copyTextBtn || !extractedTextArea) return;
-                const hasText = !!extractedTextArea.value && extractedTextArea.value.trim().length > 0;
-                copyTextBtn.style.display = hasText ? 'inline-flex' : 'none';
-                copyTextBtn.disabled = !hasText;
-            }
-
-            function setExtractedText(text) {
-                if (!extractedTextArea) return;
-                extractedTextArea.value = text || '';
-                syncCopyButtonVisibility();
-            }
-
-            function fileToBase64(file) {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result);
-                    reader.onerror = error => reject(error);
-                    reader.readAsDataURL(file);
-                });
-            }
-
-            // 显示图片预览
-            async function displayImagePreview(filePath) {
-                if (!imagePreviewArea) return;
-                if (!filePath) {
-                    imagePreviewArea.innerHTML = '<span>预览�?/span>';
-                    return;
-                }
+        // 异步处理进度监控函数
+        async function monitorAsyncProgress(taskIds) {
+            const checkInterval = 1000; // 每秒检查一次
+            let allCompleted = false;
+            
+            while (!allCompleted) {
                 try {
-                    if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.get_image_as_base64_data_uri === 'function') {
-                        updateStatus('正在加载预览...');
-                        const imageDataUri = await window.pywebview.api.get_image_as_base64_data_uri(filePath);
-                        if (imageDataUri) {
-                            imagePreviewArea.innerHTML = `<img src="${imageDataUri}" alt="图片预览">`;
-                            updateStatus('预览加载完成�?);
-                        } else {
-                            imagePreviewArea.innerHTML = '<span>无法加载预览</span>';
-                            updateStatus('无法加载图片预览�?, true);
-                        }
-                    } else {
-                        imagePreviewArea.innerHTML = '<span>预览功能不可�?/span>';
-                        updateStatus('预览功能API未就绪�?, true);
-                    }
-                } catch (e) {
-                    console.error('显示图片预览失败:', e);
-                    imagePreviewArea.innerHTML = '<span>预览加载失败</span>';
-                    updateStatus('图片预览加载失败: ' + (e.message || String(e)), true);
-                }
-            }
-
-            async function handleLocalFilesSelection(fileList) {
-                if (!fileList || fileList.length === 0) {
-                    updateStatus('未选择任何图片。');
-                    return;
-                }
-
-                const filesArray = Array.from(fileList);
-                const validFiles = filesArray.filter(file => isValidImageExtension(file.name));
-                if (validFiles.length === 0) {
-                    updateStatus('请使用支持的图片格式 (jpg, jpeg, png, bmp, tiff, webp)。', true);
-                    return;
-                }
-
-                try {
-                    updateStatus(`正在准备 ${validFiles.length} 个文件...`);
-                    const fileDataList = [];
-                    for (const file of validFiles) {
-                        const base64Data = await fileToBase64(file);
-                        fileDataList.push({
-                            name: file.name,
-                            data: base64Data,
-                            size: file.size,
-                            type: file.type
-                        });
-                    }
-
-                    if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.clear_text_cache === 'function') {
-                        await window.pywebview.api.clear_text_cache();
-                    }
-
-                    if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.upload_files === 'function') {
-                        const uploadResult = await window.pywebview.api.upload_files(fileDataList);
-                        if (uploadResult && uploadResult.success && Array.isArray(uploadResult.data) && uploadResult.data.length > 0) {
-                            window.selectedFilePaths = uploadResult.data;
-                            if (filePathDisplay) {
-                                if (validFiles.length === 1) {
-                                    filePathDisplay.textContent = '已选择: ' + validFiles[0].name;
-                                } else {
-                                    filePathDisplay.textContent = `已选择 ${validFiles.length} 个文件`;
-                                }
-                            }
-                            setExtractedText('');
-                            updateStatus(`成功上传 ${validFiles.length} 个文件。`);
-                            displayImagePreview(uploadResult.data[0]);
-                        } else {
-                            updateStatus('文件上传失败: ' + (uploadResult?.message || '未知错误'), true);
-                        }
-                    } else {
-                        updateStatus('错误: 文件上传功能尚未准备好。', true);
-                    }
-                }
-                catch (error) {
-                    console.error('处理本地文件失败:', error);
-                    updateStatus('处理本地文件失败: ' + (error.message || String(error)), true);
-                }
-            }
-
-            async function openFileSelection() {
-                try {
-                    if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.select_files === 'function' && typeof window.pywebview.api.clear_text_cache === 'function') {
-                        updateStatus('正在打开文件选择对话框...');
-                        await window.pywebview.api.clear_text_cache();
-                        const resp = await window.pywebview.api.select_files();
-                        let files = [];
-                        if (resp && (resp.success === true || resp.success === 'true')) {
-                            files = Array.isArray(resp.data) ? resp.data : [];
-                        }
-                        if (files.length > 0) {
-                            window.selectedFilePaths = files;
-                            if (filePathDisplay) {
-                                if (files.length === 1) {
-                                    const segments = files[0].split(/[\\\/]/);
-                                    filePathDisplay.textContent = '已选择: ' + segments[segments.length - 1];
-                                } else {
-                                    filePathDisplay.textContent = `已选择 ${files.length} 个文件`;
-                                }
-                            }
-                            setExtractedText('');
-                            updateStatus(`已选择 ${files.length} 个文件。`);
-                            displayImagePreview(files[0]);
-                        } else {
-                            window.selectedFilePaths = [];
-                            if (filePathDisplay) {
-                                filePathDisplay.textContent = '未选择图片';
-                            }
-                            setExtractedText('');
-                            updateStatus(resp && resp.message ? resp.message : '未选择任何图片。');
-                            displayImagePreview(null);
-                        }
-                    }
-                    else if (fileUploadInput) {
-                        fileUploadInput.click();
-                    } else {
-                        updateStatus('文件选择功能不可用。', true);
-                    }
-                }
-                catch (e) {
-                    console.error('文件选择或缓存清除失败:', e);
-                    if (filePathDisplay) {
-                        filePathDisplay.textContent = '选择文件出错';
-                    }
-                    setExtractedText('');
-                    updateStatus('选择文件出错: ' + (e.message || String(e)), true);
-                    displayImagePreview(null);
-                }
-            }
-
-            function triggerPrimaryProcessing() {
-                const targetButton = syncProcessBtn || asyncProcessBtn;
-                if (targetButton && !targetButton.disabled) {
-                    targetButton.click();
-                }
-            }
-
-            function cancelCurrentAsyncTask() {
-                if (cancelAsyncBtn) {
-                    cancelAsyncBtn.click();
-                }
-            }
-
-            // 选择文件（点击上传区域）
-            if (fileInputAreaLabel) {
-                fileInputAreaLabel.addEventListener('click', (event) => {
-                    event.preventDefault();
-                    openFileSelection();
-                });
-
-                fileInputAreaLabel.addEventListener('keydown', (event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        openFileSelection();
-                    }
-                });
-            }
-
-            if (fileUploadInput) {
-                fileUploadInput.addEventListener('change', async event => {
-                    await handleLocalFilesSelection(event.target.files);
-                    event.target.value = '';
-                });
-            }
-
-            try {
-                        // 调用后端保存异步处理结果
-                        const saveResponse = await window.pywebview.api.save_async_results(
-                            results, 
-                            window.selectedOutputFormat, 
-                            window.selectedMergeMode
-                        );
+                    const status = await window.pywebview.api.get_async_task_status(taskIds);
+                    
+                    if (status.status === 'completed') {
+                        // 所有任务完成
+                        allCompleted = true;
+                        updateStatus('所有图像处理完成！');
                         
-                        if (saveResponse && saveResponse.success) {
-                            alert(`保存成功！\n文件已保存到: ${saveResponse.saved_path || '指定位置'}`);
-                            updateStatus('异步处理结果保存成功�?);
-                        } else {
-                            alert(`保存失败: ${saveResponse?.message || '未知错误'}`);
-                            updateStatus('异步处理结果保存失败', true);
+                        // 显示结果
+                        if (status.results && status.results.length > 0) {
+                            const combinedText = status.results.map(result => result.text || '').join('\n\n---\n\n');
+                            extractedTextArea.value = combinedText;
                         }
-                    } catch (e) {
-                        console.error('保存异步结果失败:', e);
-                        alert('保存失败: ' + (e.message || String(e)));
-                        updateStatus('保存异步结果时发生错�?, true);
+                        
+                        // 重置状态
+                        isAsyncProcessing = false;
+                        currentTaskIds = [];
+                        
+                    } else if (status.status === 'failed') {
+                        allCompleted = true;
+                        updateStatus(`处理失败: ${status.error || '未知错误'}`, true);
+                        isAsyncProcessing = false;
+                        currentTaskIds = [];
+                        
+                    } else {
+                        // 更新进度
+                        const progress = Math.round(status.progress || 0);
+                        const currentTask = status.current_task || '';
+                        updateStatus(`处理进度: ${progress}% (${status.completed}/${status.total}) - ${currentTask}`);
                     }
-                }
-            }
-
-            // 异步进度监控
-            function startAsyncProgressMonitoring(taskId) {
-                if (asyncProgressInterval) {
-                    clearInterval(asyncProgressInterval);
+                    
+                } catch (error) {
+                    console.error('监控异步进度时出错:', error);
+                    updateStatus('监控进度时出错', true);
+                    allCompleted = true;
+                    isAsyncProcessing = false;
+                    currentTaskIds = [];
                 }
                 
-                asyncProgressInterval = setInterval(async () => {
-                    try {
-                        if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.get_async_task_status === 'function') {
-                            const status = await window.pywebview.api.get_async_task_status(taskId);
-                            if (status && status.status) {
-                                updateAsyncProgress(status.completed || 0, status.total || 0, status.current_task || '');
-                                
-                                if (status.status === 'completed' || status.status === 'failed' || status.status === 'cancelled') {
-                                    clearInterval(asyncProgressInterval);
-                                    asyncProgressInterval = null;
-                                    
-                                    setTimeout(() => {
-                                        hideAsyncProgress();
-                                        currentAsyncTaskId = null;
-                                        
-                                        // 显示完成结果
-                                        if (status.status === 'completed') {
-                                            updateStatus('异步处理完成�?);
-                                            loadAndDisplayRecentScans();
-                                            if (status.results && status.results.length > 0) {
-                                                const firstResult = status.results.find(r => r.extracted_text);
-                                                if (firstResult && extractedTextArea) {
-                                                    setExtractedText(firstResult.extracted_text);
-                                                }
-                                                
-                                                // 异步处理完成后弹出保存对话框
-                                                setTimeout(() => {
-                                                    showAsyncSaveDialog(status.results);
-                                                }, 500);
-                                            }
-                                        } else if (status.status === 'failed') {
-                                            updateStatus(`异步处理失败: ${status.error || '未知错误'}`, true);
-                                        } else if (status.status === 'cancelled') {
-                                            updateStatus('异步处理已取�?);
-                                        }
-                                    }, 1000);
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        console.error('监控异步进度失败:', e);
-                    }
-                }, 1000); // 每秒检查一�?
-            }
-
-            // 同步处理按钮事件
-            if (syncProcessBtn) {
-                syncProcessBtn.addEventListener('click', async () => {
-                    if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.process_images === 'function')) {
-                        updateStatus("错误: 处理功能尚未准备好�?, true);
-                        alert("处理功能尚未准备好，请稍后再试�?);
-                        return;
-                    }
-                    if (window.selectedFilePaths.length === 0) {
-                        alert("请先选择要处理的图片�?);
-                        updateStatus("错误: 请先选择图片�?, true);
-                        return;
-                    }
-                    updateStatus(`正在同步处理 ${window.selectedFilePaths.length} 张图片，输出�?${window.selectedOutputFormat.toUpperCase()}，方式：${window.selectedMergeMode === 'combined' ? '合并' : '逐张'}...`);
-                    try {
-                        const response = await window.pywebview.api.process_images(window.selectedFilePaths, window.selectedOutputFormat, window.selectedMergeMode);
-
-                        updateStatus(response.message, response.status === "失败");
-
-                        let alertMessage = `处理结果: ${response.status}\n${response.message}\n`;
-                        let firstSuccessfulText = "";
-
-                        if (response.results && response.results.length > 0) {
-                            alertMessage += "\n详细信息:\n";
-                            response.results.forEach(res => {
-                                alertMessage += `- ${res.file_name}: ${res.status}`;
-                                if(res.saved_path) alertMessage += ` (已保存到: ${res.saved_path.split(/[\\\/]/).pop()})`;
-                                if(res.error) alertMessage += ` (错误: ${res.error})`;
-                                alertMessage += `\n`;
-                                if (res.status === "成功并已保存" || res.status === "提取成功但未保存" || res.status === "提取成功但保存失�?) {
-                                    if (!firstSuccessfulText && res.extracted_text) {
-                                        firstSuccessfulText = res.extracted_text;
-                                    }
-                                }
-                            });
-                            setExtractedText(firstSuccessfulText);
-                            console.log("详细处理结果:", response.results);
-                            loadAndDisplayRecentScans();
-                        } else if (response.first_text) {
-                            setExtractedText(response.first_text);
-                        } else {
-                            setExtractedText((response.status === '失败' && response.error) ? `处理失败: ${response.error}` : '');
-                        }
-
-                        alert(alertMessage);
-
-                    } catch (e) {
-                        console.error("调用 Python process_images 失败:", e);
-                        updateStatus("处理图片失败: " + (e.message || String(e)), true);
-                        alert("处理图片失败，请查看控制台获取更多信息�?);
-                    }
-                });
-            }
-
-            // 异步处理按钮事件
-            if (asyncProcessBtn) {
-                asyncProcessBtn.addEventListener('click', async () => {
-                    if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.start_async_ocr === 'function')) {
-                        updateStatus("错误: 异步处理功能尚未准备好�?, true);
-                        alert("异步处理功能尚未准备好，请稍后再试�?);
-                        return;
-                    }
-                    if (window.selectedFilePaths.length === 0) {
-                        alert("请先选择要处理的图片�?);
-                        updateStatus("错误: 请先选择图片�?, true);
-                        return;
-                    }
-                    
-                    try {
-                        updateStatus(`正在启动异步处理 ${window.selectedFilePaths.length} 张图�?..`);
-                        const response = await window.pywebview.api.start_async_ocr(window.selectedFilePaths, window.selectedOutputFormat, window.selectedMergeMode);
-                        
-                        if (response.status === '成功') {
-                            currentAsyncTaskId = response.task_id;
-                            showAsyncProgress();
-                            updateAsyncProgress(0, window.selectedFilePaths.length, '准备开�?..');
-                            startAsyncProgressMonitoring(currentAsyncTaskId);
-                            updateStatus(`异步任务已启动，任务ID: ${currentAsyncTaskId}`);
-                        } else {
-                            updateStatus(`启动异步处理失败: ${response.message}`, true);
-                            alert(`启动异步处理失败: ${response.message}`);
-                        }
-                    } catch (e) {
-                        console.error("启动异步处理失败:", e);
-                        updateStatus("启动异步处理失败: " + (e.message || String(e)), true);
-                        alert("启动异步处理失败，请查看控制台获取更多信息�?);
-                    }
-                });
-            }
-
-            // 取消异步处理按钮事件
-            if (cancelAsyncBtn) {
-                cancelAsyncBtn.addEventListener('click', async () => {
-                    if (!currentAsyncTaskId) {
-                        updateStatus("没有正在运行的异步任�?, true);
-                        return;
-                    }
-                    
-                    try {
-                        if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.cancel_async_task === 'function') {
-                            const response = await window.pywebview.api.cancel_async_task(currentAsyncTaskId);
-                            updateStatus(response.message, response.status !== '成功');
-                            
-                            if (response.status === '成功') {
-                                hideAsyncProgress();
-                                currentAsyncTaskId = null;
-                            }
-                        }
-                    } catch (e) {
-                        console.error("取消异步任务失败:", e);
-                        updateStatus("取消异步任务失败: " + (e.message || String(e)), true);
-                    }
-                });
-            }
-
-            function openModal(modalOverlay) {
-                if (modalOverlay) modalOverlay.classList.add('active');
-            }
-            function closeModal(modalOverlay) {
-                if (modalOverlay) modalOverlay.classList.remove('active');
-            }
-
-            if (settingsBtn && apiKeyModalOverlay) {
-                settingsBtn.addEventListener('click', () => {
-                    if (!(window.pywebview && window.pywebview.api)) {
-                        updateStatus("错误: API设置功能尚未准备好�?, true); return;
-                    }
-                    apiKeyInput.value = '';
-                    openModal(apiKeyModalOverlay);
-                    apiKeyInput.focus();
-                });
-            }
-
-            if (confirmApiKeyBtn && apiKeyInput && apiKeyModalOverlay) {
-                confirmApiKeyBtn.addEventListener('click', async () => {
-                    const apiKey = apiKeyInput.value.trim();
-                    try {
-                        if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.set_api_key === 'function')) {
-                             updateStatus("错误: API设置功能尚未准备好�?, true); closeModal(apiKeyModalOverlay); return;
-                        }
-                        const response = await window.pywebview.api.set_api_key(apiKey);
-                        updateStatus(response.message, response.status !== "成功");
-                    } catch (e) {
-                        updateStatus("设置 API 密钥失败: " + e.message, true);
-                    }
-                    closeModal(apiKeyModalOverlay);
-                });
-            }
-
-            if (cancelApiKeyBtn && apiKeyModalOverlay) {
-                cancelApiKeyBtn.addEventListener('click', () => closeModal(apiKeyModalOverlay));
-            }
-            if (apiKeyModalOverlay) {
-                apiKeyModalOverlay.addEventListener('click', (event) => {
-                    if (event.target === apiKeyModalOverlay) closeModal(apiKeyModalOverlay);
-                });
-            }
-
-            // 清除历史记录按钮 - 打开确认模态框
-            if (clearHistoryBtn && clearHistoryModalOverlay) {
-                clearHistoryBtn.addEventListener('click', () => {
-                     if (!(window.pywebview && window.pywebview.api)) {
-                        updateStatus("错误: 清除历史功能尚未准备好�?, true); return;
-                    }
-                    openModal(clearHistoryModalOverlay);
-                });
-            }
-
-            // 清除历史确认模态框 - 确定按钮
-            if (confirmClearHistoryBtn && clearHistoryModalOverlay) {
-                confirmClearHistoryBtn.addEventListener('click', async () => {
-                    try {
-                        if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.clear_recent_scans_history === 'function')) {
-                             updateStatus("错误: 清除历史功能尚未准备好�?, true); closeModal(clearHistoryModalOverlay); return;
-                        }
-                        const response = await window.pywebview.api.clear_recent_scans_history();
-                        updateStatus(response.message, response.status !== "成功");
-                        loadAndDisplayRecentScans(); // 清除后刷新列�?
-                    } catch (e) {
-                        updateStatus("清除历史记录失败: " + e.message, true);
-                    }
-                    closeModal(clearHistoryModalOverlay);
-                });
-            }
-
-            // 清除历史确认模态框 - 取消按钮 / 点击遮罩�?
-            if (cancelClearHistoryBtn && clearHistoryModalOverlay) {
-                cancelClearHistoryBtn.addEventListener('click', () => closeModal(clearHistoryModalOverlay));
-            }
-            if (clearHistoryModalOverlay) {
-                clearHistoryModalOverlay.addEventListener('click', (event) => {
-                    if (event.target === clearHistoryModalOverlay) closeModal(clearHistoryModalOverlay);
-                });
-            }
-
-            // 添加统计按钮事件监听�?
-            const refreshStatsBtn = document.getElementById('refresh-stats-btn');
-            if (refreshStatsBtn) {
-                refreshStatsBtn.addEventListener('click', refreshStats);
-            }
-            
-            const exportErrorsBtn = document.getElementById('export-errors-btn');
-            if (exportErrorsBtn) {
-                exportErrorsBtn.addEventListener('click', exportPerformanceData);
-            }
-
-            // 加载和显示最近扫描列表的函数
-
-            async function loadAndDisplayRecentScans() {
-                if (!recentScansListContainer) {
-                    console.warn("loadAndDisplayRecentScans: recentScansListContainer is not available.");
-                    return;
-                }
-
-                if (!(window.pywebview && window.pywebview.api && typeof window.pywebview.api.get_recent_scans === 'function')) {
-                    console.warn("loadAndDisplayRecentScans: pywebview.api.get_recent_scans is not available yet.");
-                    recentScansListContainer.innerHTML = '<div class="text-center text-sm text-slate-400 p-4">历史记录正在加载...</div>';
-                    return;
-                }
-
-                try {
-                    const history = await window.pywebview.api.get_recent_scans();
-                    recentScansListContainer.innerHTML = '';
-
-                    if (history && history.length > 0) {
-                        const fragment = document.createDocumentFragment();
-                        const iconTemplates = {
-                            pdf: '<svg class="file-icon-sm text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a2 2 0 002 2h10a2 2 0 002-2V7.414a2 2 0 00-.586-1.414l-4-4A2 2 0 009.414 1H5a2 2 0 00-2 2v14zm6-11a1 1 0 011-1h2a1 1 0 110 2H10a1 1 0 01-1-1zM9 9a1 1 0 000 2h2a1 1 0 100-2H9z" clip-rule="evenodd" /></svg>',
-                            docx: '<svg class="file-icon-sm text-blue-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a2 2 0 002 2h10a2 2 0 002-2V7.414a2 2 0 00-.586-1.414l-4-4A2 2 0 009.414 1H5a2 2 0 00-2 2v14zm10-4a1 1 0 100-2H7a1 1 0 100 2h6zm0-3a1 1 0 100-2H7a1 1 0 100 2h6zm-4-3a1 1 0 100-2H7a1 1 0 100 2h2z" clip-rule="evenodd" /></svg>',
-                            xlsx: '<svg class="file-icon-sm text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25M9 16.5v.75m3-3v3M15 12v5.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9h-1.5" /></svg>',
-                            default: '<svg class="file-icon-sm text-slate-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m.75 12.75h7.5m-7.5 3H12M10.5 2.25H5.625A2.25 2.25 0 003.375 4.5v15A2.25 2.25 0 005.625 21.75h12.75A2.25 2.25 0 0020.625 19.5V11.25a9 9 0 00-9-9h-1.5" /></svg>'
-                        };
-
-                        history.forEach(item => {
-                            const itemDiv = document.createElement('div');
-                            itemDiv.className = 'recent-item';
-                            itemDiv.dataset.fullPath = item.saved_file_full_path || '';
-                            itemDiv.dataset.imageName = item.image_name || '';
-                            itemDiv.dataset.outputName = item.output_name || '';
-                            itemDiv.dataset.timestamp = item.timestamp || '';
-                            itemDiv.tabIndex = 0;
-                            itemDiv.setAttribute('role', 'button');
-                            const labelParts = [item.image_name, item.output_name].filter(Boolean);
-                            const ariaLabel = labelParts.length > 0 ? labelParts.join(' 转到 ') : '打开历史记录';
-                            itemDiv.setAttribute('aria-label', `打开 ${ariaLabel}`);
-
-                            const contentWrapper = document.createElement('div');
-                            contentWrapper.className = 'flex items-center recent-item-info';
-
-                            const iconTemplate = iconTemplates[(item.output_format || '').toLowerCase()] || iconTemplates.default;
-                            const iconWrapper = document.createElement('div');
-                            iconWrapper.innerHTML = iconTemplate;
-                            const iconElement = iconWrapper.firstElementChild;
-                            if (iconElement) {
-                                contentWrapper.appendChild(iconElement);
-                            }
-
-                            const textContainer = document.createElement('div');
-                            const displayLabelParts = [item.image_name, item.output_name].filter(Boolean);
-                            const displayLabel = displayLabelParts.length ? displayLabelParts.join(' -> ') : (item.image_name || item.output_name || '未命名结果');
-
-                            const nameParagraph = document.createElement('p');
-                            nameParagraph.className = 'text-sm font-medium text-slate-700 truncate';
-                            nameParagraph.textContent = displayLabel;
-                            nameParagraph.title = displayLabel;
-
-                            const timestampParagraph = document.createElement('p');
-                            timestampParagraph.className = 'text-xs text-slate-500';
-                            timestampParagraph.textContent = item.timestamp || '';
-
-                            textContainer.appendChild(nameParagraph);
-                            textContainer.appendChild(timestampParagraph);
-                            contentWrapper.appendChild(textContainer);
-                            itemDiv.appendChild(contentWrapper);
-                            fragment.appendChild(itemDiv);
-                        });
-
-                        recentScansListContainer.innerHTML = '';
-                        recentScansListContainer.appendChild(fragment);
-                        updateStatus('最近扫描记录已加载。');
-                    } else {
-                        recentScansListContainer.innerHTML = '';
-                        const emptyMessage = document.createElement('div');
-                        emptyMessage.className = 'text-center text-sm text-slate-500 p-4';
-                        emptyMessage.textContent = '无记录';
-                        recentScansListContainer.appendChild(emptyMessage);
-                        updateStatus('暂无扫描记录。');
-                    }
-                } catch (e) {
-                    console.error('加载最近扫描失败:', e);
-                    updateStatus('加载最近扫描记录失败 ' + (e.message || String(e)), true);
-                    recentScansListContainer.innerHTML = '<div class="text-center text-sm text-red-500 p-4">加载历史失败</div>';
+                if (!allCompleted) {
+                    await new Promise(resolve => setTimeout(resolve, checkInterval));
                 }
             }
+        }
 
-            if (recentScansListContainer) {
-                recentScansListContainer.addEventListener('click', (event) => {
-                    const targetItem = event.target.closest('.recent-item');
-                    if (!targetItem) return;
-                    event.preventDefault();
-                    handleRecentItemActivation(targetItem);
-                });
+        const closeModal = () => {
+            apiKeyModalOverlay.classList.remove('active');
+        };
 
-                recentScansListContainer.addEventListener('keydown', (event) => {
-                    if (event.key !== 'Enter' && event.key !== ' ') {
-                        return;
-                    }
-                    const targetItem = event.target.closest('.recent-item');
-                    if (!targetItem) return;
-                    event.preventDefault();
-                    handleRecentItemActivation(targetItem);
-                });
-            }
-
-            function handleRecentItemActivation(itemElement) {
-                if (!itemElement) return;
-                const fullPath = itemElement.dataset.fullPath;
-                const outputName = itemElement.dataset.outputName || itemElement.dataset.imageName || '历史文件';
-                if (!fullPath) {
-                    updateStatus('错误: 此历史记录没有有效的保存路径。', true);
-                    return;
-                }
-
-                updateStatus(`尝试打开: ${outputName}`);
-
-                if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.open_file_in_system === 'function') {
-                    window.pywebview.api.open_file_in_system(fullPath)
-                        .then(response => {
-                            if (response) {
-                                updateStatus(response.message, response.status !== '成功');
-                            }
-                        })
-                        .catch(error => {
-                            updateStatus(`打开文件失败: ${error.message || String(error)}`, true);
-                        });
-                } else {
-                    updateStatus('文件打开功能不可用。', true);
-                }
-            }
-            window.addEventListener('pywebviewready', function() {
-                 console.log("pywebviewready event fired. Initializing app functions.");
-                 loadAndDisplayRecentScans();
-                 initializeDragAndDrop(handleLocalFilesSelection, updateStatus);
-                 initializeKeyboardShortcuts(openFileSelection, triggerPrimaryProcessing, cancelCurrentAsyncTask);
-                 initializeThemeToggle();
-                 
-                 // 初始化统计显�?
-                 refreshStats();
-                 
-                 // 定期刷新统计（每30秒）
-                 setInterval(refreshStats, 30000);
-             });
+        // --- 事件监听器绑定 ---
+        themeToggleBtn.addEventListener('click', function() {
+            const newTheme = document.body.classList.contains('dark') ? 'light' : 'dark';
+            localStorage.setItem('theme', newTheme);
+            applyTheme(newTheme);
         });
 
-            // 拖拽上传功能
-            function initializeDragAndDrop(processFilesCallback, notifyCallback) {
-                const fileInputArea = document.querySelector('.file-input-area');
-                if (!fileInputArea) return;
+        settingsBtn.addEventListener('click', () => {
+            apiKeyModalOverlay.classList.add('active');
+        });
 
-                ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                    fileInputArea.addEventListener(eventName, preventDefaults, false);
-                    document.body.addEventListener(eventName, preventDefaults, false);
-                });
-
-                function preventDefaults(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                }
-
-                ['dragenter', 'dragover'].forEach(eventName => {
-                    fileInputArea.addEventListener(eventName, () => fileInputArea.classList.add('drag-over'), false);
-                });
-
-                ['dragleave', 'drop'].forEach(eventName => {
-                    fileInputArea.addEventListener(eventName, () => fileInputArea.classList.remove('drag-over'), false);
-                });
-
-                fileInputArea.addEventListener('drop', async (e) => {
-                    const dt = e.dataTransfer;
-                    const files = dt && dt.files ? dt.files : null;
-
-                    if (!files || files.length === 0) {
-                        if (typeof notifyCallback === 'function') {
-                            notifyCallback('未检测到有效文件。', true);
-                        }
-                        return;
-                    }
-
-                    if (typeof processFilesCallback === 'function') {
-                        await processFilesCallback(files);
-                    } else if (typeof notifyCallback === 'function') {
-                        notifyCallback('文件处理功能尚未准备就绪。', true);
-                    }
-                }, false);
+        cancelApiKeyBtn.addEventListener('click', closeModal);
+        apiKeyModalOverlay.addEventListener('click', (e) => {
+            if (e.target === apiKeyModalOverlay) {
+                closeModal();
             }
+        });
 
-        function initializeKeyboardShortcuts(openFileDialog, triggerProcessCallback, cancelAsyncCallback) {
-            document.addEventListener('keydown', function(e) {
-                if (e.ctrlKey && e.key === 'o') {
-                    e.preventDefault();
-                    if (typeof openFileDialog === 'function') {
-                        openFileDialog();
+        saveApiKeyBtn.addEventListener('click', () => {
+            const apiKey = apiKeyInput.value.trim();
+            if (apiKey) {
+                localStorage.setItem('llm_api_key', apiKey);
+                updateStatus('API Key 已成功保存！');
+                closeModal();
+            } else {
+                updateStatus('API Key 不能为空。', true);
+            }
+        });
+
+        fileUploadInput.addEventListener('change', (e) => handleFileSelection(e.target.files));
+        fileInputAreaLabel.addEventListener('drop', (e) => { e.preventDefault(); handleFileSelection(e.dataTransfer.files); });
+        fileInputAreaLabel.addEventListener('dragover', (e) => e.preventDefault());
+
+        formatToggle.addEventListener('click', function() {
+            this.classList.toggle('pdf-selected');
+            selectedOutputFormat = this.classList.contains('pdf-selected') ? 'pdf' : 'word';
+            updateStatus(`格式切换为: ${selectedOutputFormat.toUpperCase()}`);
+        });
+
+        mergeToggle.addEventListener('click', function() {
+            this.classList.toggle('combined-selected');
+            selectedMergeMode = this.classList.contains('combined-selected') ? 'combined' : 'separate';
+            updateStatus(`导出方式切换为: ${selectedMergeMode === 'combined' ? '合并保存' : '逐张保存'}`);
+        });
+
+        processBtn.addEventListener('click', async () => {
+            if (selectedFiles.length === 0) { 
+                updateStatus('请先选择图片文件', true); 
+                return; 
+            }
+            
+            // 防止重复处理
+            if (isAsyncProcessing && currentTaskIds.length > 0) {
+                updateStatus('正在处理中，请稍候...', true);
+                return;
+            }
+            
+            const fileCount = selectedFiles.length;
+            const processingMode = fileCount > IMAGE_COUNT_THRESHOLD ? '异步' : '同步';
+            updateStatus(`开始${processingMode}处理 ${fileCount} 个文件...`);
+            
+            try {
+                // 获取实际文件路径
+                const imagePaths = selectedFiles.map(file => file.path);
+                
+                if (fileCount > IMAGE_COUNT_THRESHOLD) {
+                    // 异步处理模式
+                    isAsyncProcessing = true;
+                    const response = await window.pywebview.api.start_async_ocr(
+                        imagePaths, 
+                        selectedOutputFormat, 
+                        selectedMergeMode
+                    );
+                    
+                    if (response.status === '成功') {
+                        currentTaskIds = response.task_ids || [];
+                        updateStatus('异步处理已启动，正在监控进度...');
+                        
+                        // 开始监控进度
+                        monitorAsyncProgress(currentTaskIds);
+                        
                     } else {
-                        const fallbackInput = document.getElementById('file-upload-trigger');
-                        if (fallbackInput) {
-                            fallbackInput.click();
-                        }
-                    }
-                    return;
-                }
-
-                if (e.ctrlKey && e.key === 's') {
-                    e.preventDefault();
-                    if (typeof triggerProcessCallback === 'function') {
-                        triggerProcessCallback();
-                    } else {
-                        const defaultButton = document.getElementById('sync-process-btn') || document.getElementById('async-process-btn');
-                        if (defaultButton && !defaultButton.disabled) {
-                            defaultButton.click();
-                        }
-                    }
-                    return;
-                }
-
-                if (e.key === 'Escape') {
-                    e.preventDefault();
-                    if (typeof cancelAsyncCallback === 'function') {
-                        cancelAsyncCallback();
-                    } else if (typeof window.cancelAsyncProcessing === 'function') {
-                        window.cancelAsyncProcessing();
-                    }
-
-                    const activeModal = document.querySelector('.modal-overlay.active');
-                    if (activeModal) {
-                        activeModal.classList.remove('active');
-                    }
-                    return;
-                }
-
-                if (e.key === 'F1') {
-                    e.preventDefault();
-                    alert('快捷键:\nCtrl+O: 选择文件\nCtrl+S: 开始处理\nEsc: 取消操作\nF5: 刷新统计');
-                    return;
-                }
-
-                if (e.key === 'F5') {
-                    e.preventDefault();
-                    refreshStats();
-                    return;
-                }
-            });
-        }
-
-        // Ctrl+O: 选择文件
-                if (e.ctrlKey && e.key === 'o') {
-                    e.preventDefault();
-                    const fileInputArea = document.querySelector('.file-input-area');
-                    if (fileInputArea) {
-                        fileInputArea.click();
-                    }
-                    return;
-                }
-
-                // Ctrl+S: 开始处�?
-                if (e.ctrlKey && e.key === 's') {
-                    e.preventDefault();
-                    const processButton = document.getElementById('process-button');
-                    if (processButton && !processButton.disabled) {
-                        processButton.click();
-                    }
-                    return;
-                }
-
-                // Escape: 取消当前操作
-                if (e.key === 'Escape') {
-                    e.preventDefault();
-                    // 如果有正在进行的异步任务，尝试取�?
-                    if (currentAsyncTaskId) {
-                        cancelAsyncProcessing();
+                        updateStatus(`启动异步处理失败: ${response.message || '未知错误'}`, true);
+                        isAsyncProcessing = false;
                     }
                     
-                    // 关闭可能打开的模态框
-                    const activeModal = document.querySelector('.modal-overlay.active');
-                    if (activeModal) {
-                        activeModal.classList.remove('active');
-                    }
-                    return;
-                }
-
-                // F1: 显示帮助信息
-                if (e.key === 'F1') {
-                    e.preventDefault();
-                    alert('快捷�?\nCtrl+O: 选择文件\nCtrl+S: 开始处理\nEsc: 取消操作\nF5: 刷新统计');
-                    return;
-                }
-                
-                // F5: 刷新统计
-                if (e.key === 'F5') {
-                    e.preventDefault();
-                    refreshStats();
-                    return;
-                }
-            });
-        }
-
-        // 刷新性能和错误统�?
-        async function refreshStats() {
-            try {
-                // 获取性能统计
-                if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.get_performance_stats === 'function') {
-                    const perfResponse = await window.pywebview.api.get_performance_stats();
-                    if (perfResponse.success && perfResponse.data) {
-                        updatePerformanceStats(perfResponse.data);
-                    }
-                }
-                
-                // 获取错误统计
-                if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.get_error_stats === 'function') {
-                    const errorResponse = await window.pywebview.api.get_error_stats();
-                    if (errorResponse.success && errorResponse.data) {
-                        updateErrorStats(errorResponse.data);
-                    }
-                }
-            } catch (error) {
-                console.error('刷新统计失败:', error);
-            }
-        }
-
-        // 更新性能统计显示
-        function updatePerformanceStats(data) {
-            const cpuUsage = document.getElementById('cpu-usage');
-            const memoryUsage = document.getElementById('memory-usage');
-            const taskCount = document.getElementById('task-count');
-            
-            if (cpuUsage && data.cpu_usage !== undefined) {
-                cpuUsage.textContent = `${data.cpu_usage.toFixed(1)}%`;
-            }
-            
-            if (memoryUsage && data.memory_usage !== undefined) {
-                memoryUsage.textContent = `${data.memory_usage.toFixed(1)}%`;
-            }
-            
-            if (taskCount && data.active_tasks !== undefined) {
-                taskCount.textContent = data.active_tasks.toString();
-            }
-        }
-
-        // 更新错误统计显示
-        function updateErrorStats(data) {
-            const totalErrors = document.getElementById('total-errors');
-            const criticalErrors = document.getElementById('critical-errors');
-            const recentErrors = document.getElementById('recent-errors');
-            
-            if (totalErrors && data.total_errors !== undefined) {
-                totalErrors.textContent = data.total_errors.toString();
-            }
-            
-            if (criticalErrors && data.critical_errors !== undefined) {
-                criticalErrors.textContent = data.critical_errors.toString();
-                criticalErrors.className = data.critical_errors > 0 ? 'font-medium text-red-600' : 'font-medium text-green-600';
-            }
-            
-            if (recentErrors && data.recent_errors !== undefined) {
-                recentErrors.textContent = data.recent_errors.toString();
-            }
-        }
-
-        // 导出性能数据
-        async function exportPerformanceData() {
-            try {
-                if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.export_performance_data === 'function') {
-                    const response = await window.pywebview.api.export_performance_data();
-                    if (response.success) {
-                        updateStatus(`性能数据已导�? ${response.file_path}`);
+                } else {
+                    // 同步处理模式
+                    const response = await window.pywebview.api.process_images(
+                        imagePaths, 
+                        selectedOutputFormat, 
+                        selectedMergeMode
+                    );
+                    
+                    if (response.status === '成功') {
+                        extractedTextArea.value = response.text || '提取完成';
+                        updateStatus('同步处理完成！');
                     } else {
-                        updateStatus(`导出失败: ${response.message}`, true);
+                        updateStatus(`同步处理失败: ${response.error || '未知错误'}`, true);
                     }
                 }
+                
             } catch (error) {
-                console.error('导出性能数据失败:', error);
-                updateStatus('导出性能数据失败', true);
+                console.error('处理过程中出错:', error);
+                updateStatus(`处理失败: ${error.message || '未知错误'}`, true);
+                isAsyncProcessing = false;
+                currentTaskIds = [];
             }
+        });
+
+        // --- 初始化 ---
+        applyTheme(localStorage.getItem('theme') || 'light');
+        const savedApiKey = localStorage.getItem('llm_api_key');
+        if (savedApiKey) {
+            apiKeyInput.value = savedApiKey;
+            console.log("已加载保存的 API Key。");
         }
-
-
-
-             // 主题切换功能
-             function initializeThemeToggle() {
-                 const themeToggleBtn = document.getElementById('theme-toggle-btn');
-                 const themeIconLight = document.getElementById('theme-icon-light');
-                 const themeIconDark = document.getElementById('theme-icon-dark');
-                 
-                 if (!themeToggleBtn || !themeIconLight || !themeIconDark) return;
-
-                 // 从localStorage读取保存的主题设�?
-                 const savedTheme = localStorage.getItem('theme') || 'light';
-                 applyTheme(savedTheme);
-
-                 // 主题切换按钮点击事件
-                 themeToggleBtn.addEventListener('click', function() {
-                     const currentTheme = document.body.classList.contains('dark') ? 'dark' : 'light';
-                     const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-                     applyTheme(newTheme);
-                     localStorage.setItem('theme', newTheme);
-                     updateStatus(`已切换到${newTheme === 'dark' ? '暗色' : '亮色'}主题`);
-                 });
-
-                 function applyTheme(theme) {
-                     if (theme === 'dark') {
-                         document.body.classList.add('dark');
-                         themeIconLight.classList.add('hidden');
-                         themeIconDark.classList.remove('hidden');
-                     } else {
-                         document.body.classList.remove('dark');
-                         themeIconLight.classList.remove('hidden');
-                         themeIconDark.classList.add('hidden');
-                     }
-                 }
-             }
-
-             
-
-
-         </script>
-     </body>
- </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    });
+</script>
+</body>
+</html>
 

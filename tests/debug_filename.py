@@ -38,7 +38,7 @@ def test_sanitize_filename():
         "未知文件",
         "测试文档",
         "My Document",
-        "文档<>:test",
+        "文档<>:tests",
         "normal_file.txt"
     ]
     

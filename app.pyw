@@ -10,6 +10,7 @@ import sys
 import os
 import time
 import webview
+from pathlib import Path
 
 # 记录启动时间
 start_time = time.time()
@@ -24,10 +25,14 @@ if __name__ == '__main__':
     # 创建API实例
     api_instance = Api()
 
+    ui_file = Path(__file__).resolve().parent / 'ui' / 'ui.html'
+    if not ui_file.exists():
+        raise FileNotFoundError(f'UI 文件未找到: {ui_file}')
+
     # 创建窗口，优化参数减少启动开销
     window = webview.create_window(
         'LLM 图像扫描与导出 (Pywebview)',
-        'ui/ui.html',
+        ui_file.as_uri(),
         js_api=api_instance,
         width=1250,
         height=850,
