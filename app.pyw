@@ -21,7 +21,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # 延迟导入，提升启动速度
 from src.main_api import Api
 
-if __name__ == '__main__':
+
+
+def main():
+    """应用程序主函数"""
     # 创建API实例
     api_instance = Api()
 
@@ -38,6 +41,7 @@ if __name__ == '__main__':
         height=850,
         resizable=True,
         confirm_close=True,
+
         # 性能优化参数
         shadow=True,
         text_select=False  # 减少初始化开销
@@ -45,11 +49,15 @@ if __name__ == '__main__':
 
     # 将窗口实例回传给API类
     api_instance._window = window
-    
+
     # 计算初始化时间
     init_time = time.time() - start_time
     print(f"应用初始化完成，耗时: {init_time:.2f}秒")
 
     # 启动应用，关闭debug模式提升性能
     webview.start(debug=False)
+
+
+if __name__ == '__main__':
+    main()
 

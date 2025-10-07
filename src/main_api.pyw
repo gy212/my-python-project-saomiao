@@ -369,6 +369,18 @@ class Api:
         except Exception as e:
             return get_error_handler().handle_exception("upload_files", e)
 
+    @handle_exceptions("get_api_key")
+    def get_api_key(self):
+        """获取当前的API密钥。"""
+        try:
+            api_key = self._get_api_key()
+            return get_error_handler().create_success_response(
+                data={"api_key": api_key, "has_api_key": bool(api_key and api_key.strip())},
+                message="API密钥获取成功"
+            )
+        except Exception as e:
+            return get_error_handler().handle_exception("get_api_key", e)
+
     @handle_exceptions("set_api_key")
     def set_api_key(self, api_key_value):
         """设置并保存API密钥。"""
@@ -1101,4 +1113,13 @@ class Api:
                 "success": False,
                 "message": error_msg
             }
+
+    def show_window(self):
+        """显示主窗口"""
+        get_logger().info("接收到前端请求，正在尝试显示窗口...")
+        if self._window:
+            self._window.show()
+            get_logger().info("窗口已成功显示。")
+        else:
+            get_logger().error("窗口实例不存在，无法显示窗口。")
 
