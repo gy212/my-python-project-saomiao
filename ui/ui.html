@@ -4,16 +4,130 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LLM 图像扫描与导出 (液态玻璃版)</title>
-    <link rel="stylesheet" href="assets/tailwind.min.css">
-    <link rel="stylesheet" href="assets/styles.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --mouse-x: 50%;
+            --mouse-y: 50%;
+        }
+
+        html, body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f1f5f9; /* slate-100 */
+            transition: background-color 0.3s ease;
+            margin: 0; padding: 0; min-height: 100vh;
+        }
+        .dark, .dark html, .dark body { background-color: #0f172a !important; }
+
+        .glass-pane {
+            position: relative;
+            background: rgba(255, 255, 255, 0.45);
+            backdrop-filter: blur(24px) saturate(1.2);
+            border-radius: 16px;
+            box-shadow:
+                    0 0 0 1.5px rgba(255, 255, 255, 0.5),
+                    inset 0 2px 4px rgba(255, 255, 255, 0.8),
+                    0 20px 50px -15px rgba(0, 0, 0, 0.25);
+            transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+            overflow: hidden;
+        }
+        .dark .glass-pane {
+            background: rgba(30, 41, 59, 0.45);
+            box-shadow:
+                    0 0 0 1.5px rgba(255, 255, 255, 0.1),
+                    inset 0 2px 2px rgba(255, 255, 255, 0.1),
+                    0 20px 50px -15px rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-pane:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow:
+                    0 0 0 1.5px rgba(255, 255, 255, 0.6),
+                    inset 0 2px 4px rgba(255, 255, 255, 0.9),
+                    0 25px 60px -15px rgba(0, 0, 0, 0.35);
+        }
+
+        .glass-pane::before {
+            content: '';
+            position: absolute;
+            top: var(--mouse-y);
+            left: var(--mouse-x);
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0) 65%);
+            opacity: 0;
+            transition: opacity 0.5s, top 0.2s ease-out, left 0.2s ease-out;
+            pointer-events: none;
+        }
+        .dark .glass-pane::before {
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0) 65%);
+        }
+        .glass-pane:hover::before {
+            opacity: 1;
+        }
+
+        .app-shell { display: flex; flex-direction: column; min-height: 100vh; max-width: 1400px; margin: 0 auto; }
+        .main-content-area { flex-grow: 1; display: flex; gap: 2rem; padding: 2rem; }
+        .left-panel { flex: 2; display: flex; flex-direction: column; gap: 1.5rem; }
+        .right-panel { flex: 1; display: flex; flex-direction: column; padding: 2rem; }
+
+        @media (max-width: 1024px) {
+            .main-content-area { flex-direction: column; gap: 1rem; padding: 1rem; }
+            .left-panel, .right-panel { flex: none; }
+        }
+        @media (max-width: 768px) {
+            .app-shell { border-radius: 0; }
+            .main-content-area, .right-panel, .card { padding: 1rem; }
+        }
+
+        .toggle-switch { background: rgba(0,0,0,0.05); transition: background-color 0.3s; }
+        .dark .toggle-switch { background: rgba(0,0,0,0.2); }
+        .toggle-switch:hover { background: rgba(0,0,0,0.08); }
+        .dark .toggle-switch:hover { background: rgba(0,0,0,0.3); }
+        .toggle-switch > div.option-label { color: #475569; transition: color 0.4s ease-in-out; }
+        .dark .toggle-switch > div.option-label { color: #cbd5e1; }
+
+        #format-highlight, #merge-highlight { transition: transform 0.4s ease-in-out, background-position 0.4s ease-in-out, box-shadow 0.4s ease-in-out; }
+        #format-highlight { background-image: linear-gradient(135deg, #764ba2, #667eea, #ee5a24, #ff6b6b); background-size: 200% 200%; background-position: 25% 50%; box-shadow: 0 8px 25px rgba(118, 75, 162, 0.3); }
+        #format-toggle.pdf-selected #format-highlight { background-position: 75% 50%; box-shadow: 0 8px 25px rgba(255, 107, 107, 0.3); transform: translateX(calc(100% + 0.5rem)); }
+        #merge-highlight { background-image: linear-gradient(135deg, #2563eb, #3b82f6, #15803d, #16a34a); background-size: 200% 200%; background-position: 25% 50%; box-shadow: 0 8px 25px rgba(59, 130, 246, 0.3); }
+        #merge-toggle.combined-selected #merge-highlight { background-position: 75% 50%; box-shadow: 0 8px 25px rgba(22, 163, 74, 0.3); transform: translateX(calc(100% + 0.5rem)); }
+
+        #process-btn { background-color: rgba(16, 185, 129, 0.3); transition: background-color 0.3s, transform 0.3s, box-shadow 0.3s; }
+        #process-btn:hover { background-color: rgba(16, 185, 129, 0.5); }
+
+        .file-input-area, .inset-panel { transition: all 0.3s ease-in-out; }
+        .file-input-area { display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; background-color: transparent; border-radius: 20px; text-align: center; cursor: pointer; box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.15), inset -2px -2px 6px rgba(255, 255, 255, 0.7); }
+        .dark .file-input-area { box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), inset -2px -2px 6px rgba(255, 255, 255, 0.05); }
+        .file-input-area:hover { background-color: rgba(255, 255, 255, 0.05); box-shadow: inset 3px 3px 7px rgba(0, 0, 0, 0.15), inset -3px -3px 8px rgba(255, 255, 255, 0.7); }
+        .dark .file-input-area:hover { background-color: rgba(0, 0, 0, 0.1); box-shadow: inset 3px 3px 7px rgba(0, 0, 0, 0.5), inset -3px -3px 8px rgba(255, 255, 255, 0.05); }
+
+        .inset-panel { background-color: transparent !important; border: none !important; box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.15), inset -2px -2px 6px rgba(255, 255, 255, 0.7) !important; border-radius: 20px !important; }
+        .dark .inset-panel { box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.5), inset -2px -2px 6px rgba(255, 255, 255, 0.05) !important; }
+
+        textarea, input { background-color: rgba(255,255,255,0.2); }
+        .dark textarea, .dark input { background-color: rgba(0,0,0,0.2); }
+        .dark #api-key-input { border-color: #4b5563; }
+
+        #theme-toggle-btn { color: #1e293b; transition: all 0.2s ease-in-out; }
+        .dark #theme-toggle-btn { color: #e2e8f0; }
+        #theme-toggle-btn:hover, #settings-btn:hover { transform: scale(1.1) rotate(15deg); }
+        #settings-btn { color: #1e293b; transition: all 0.2s ease-in-out; }
+        .dark #settings-btn { color: #e2e8f0; }
+
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 50; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s 0.3s; }
+        .modal-overlay.active { opacity: 1; visibility: visible; transition-delay: 0s; }
+        .modal-content { width: 90%; max-width: 420px; transform: scale(0.95); transition: transform 0.3s ease; }
+        .modal-overlay.active .modal-content { transform: scale(1); }
+
+    </style>
 </head>
 <body class="dark:text-slate-200">
 
-<div id="loader" class="fixed inset-0 flex items-center justify-center z-50">
-    <div class="loader-spinner"></div>
-</div>
-
-<div class="app-shell" style="display: none;">
+<div class="app-shell">
     <header class="bg-transparent shadow-none sticky top-0 z-20 glass-pane mx-2 mt-2">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex items-center justify-between h-20">
@@ -33,7 +147,7 @@
 
     <div class="main-content-area">
         <div class="left-panel">
-            <div id="upload-card" class="card p-6 glass-pane flex flex-col">
+            <div class="card p-6 glass-pane flex flex-col">
                 <input type="file" id="file-upload-trigger" multiple accept=".jpg,.jpeg,.png,.bmp,.tiff,.webp" hidden>
                 <label for="file-upload-trigger" class="file-input-area flex-grow" role="button">
                     <svg class="w-16 h-16 text-indigo-500 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" /></svg>
@@ -41,7 +155,7 @@
                     <p class="text-sm text-slate-500 mb-4">或将文件拖拽到此处</p>
                 </label>
             </div>
-            <div id="preview-card" class="card p-6 flex-grow flex flex-col glass-pane">
+            <div class="card p-6 flex-grow flex flex-col glass-pane">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
                     <div class="flex flex-col">
                         <h3 class="text-lg font-semibold text-slate-700 dark:text-slate-300 mb-3">图片预览</h3>
@@ -56,7 +170,7 @@
                     </div>
                 </div>
             </div>
-            <div id="format-card" class="card p-6 glass-pane">
+            <div class="card p-6 glass-pane">
                 <h3 class="text-md font-semibold text-slate-700 dark:text-slate-300 mb-4">转换选项</h3>
                 <div id="format-toggle" class="toggle-switch glass-pane relative flex items-center w-full h-16 rounded-2xl p-2 cursor-pointer gap-2" role="radiogroup">
                     <div id="format-highlight" class="absolute top-2 left-2 w-[calc(50%-0.5rem)] h-12 rounded-xl"></div>
@@ -68,7 +182,7 @@
                     </div>
                 </div>
             </div>
-            <div id="export-card" class="card p-6 glass-pane">
+            <div class="card p-6 glass-pane">
                 <h3 class="text-md font-semibold text-slate-700 dark:text-slate-300 mb-4">导出方式</h3>
                 <div id="merge-toggle" class="toggle-switch glass-pane relative flex items-center w-full h-16 rounded-2xl p-2 cursor-pointer gap-2" role="radiogroup">
                     <div id="merge-highlight" class="absolute top-2 left-2 w-[calc(50%-0.5rem)] h-12 rounded-xl"></div>
@@ -81,7 +195,7 @@
                 </div>
             </div>
         </div>
-        <div id="history-panel" class="right-panel glass-pane">
+        <div class="right-panel glass-pane">
             <div class="flex items-center justify-between mb-3">
                 <h2 class="text-lg font-semibold text-slate-700 dark:text-slate-300">最近扫描</h2>
                 <button id="clear-history-btn" class="p-2 rounded-lg text-slate-500 hover:bg-red-100/50 dark:hover:bg-red-900/50 hover:text-red-600 dark:hover:text-red-500 transition-colors" title="清除历史"><svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.124-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.077-2.09.921-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"></path></svg></button>
@@ -116,7 +230,284 @@
     </div>
 </div>
 
-<script src="assets/script.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- "液态玻璃"高光追踪脚本 (性能优化版) ---
+        const glassPanes = document.querySelectorAll('.glass-pane');
+        let mouseX = 0;
+        let mouseY = 0;
+        document.body.addEventListener('mousemove', e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+        function animationLoop() {
+            glassPanes.forEach(pane => {
+                const rect = pane.getBoundingClientRect();
+                const x = mouseX - rect.left;
+                const y = mouseY - rect.top;
+                pane.style.setProperty('--mouse-x', `${x}px`);
+                pane.style.setProperty('--mouse-y', `${y}px`);
+            });
+            requestAnimationFrame(animationLoop);
+        }
+        animationLoop();
+
+        // --- 全局元素获取 ---
+        const themeToggleBtn = document.getElementById('theme-toggle-btn');
+        const themeIconLight = document.getElementById('theme-icon-light');
+        const themeIconDark = document.getElementById('theme-icon-dark');
+        const settingsBtn = document.getElementById('settings-btn');
+        const apiKeyModalOverlay = document.getElementById('api-key-modal-overlay');
+        const apiKeyInput = document.getElementById('api-key-input');
+        const saveApiKeyBtn = document.getElementById('save-api-key-btn');
+        const cancelApiKeyBtn = document.getElementById('cancel-api-key-btn');
+        const statusBar = document.getElementById('status-bar');
+        const fileUploadInput = document.getElementById('file-upload-trigger');
+        const fileInputAreaLabel = document.querySelector('label[for="file-upload-trigger"]');
+        const imagePreviewArea = document.getElementById('image-preview-area');
+        const extractedTextArea = document.getElementById('extracted-text-area');
+        const copyTextBtn = document.getElementById('copy-text-btn');
+        const processBtn = document.getElementById('process-btn');
+        const formatToggle = document.getElementById('format-toggle');
+        const formatHighlight = document.getElementById('format-highlight');
+        const mergeToggle = document.getElementById('merge-toggle');
+        const mergeHighlight = document.getElementById('merge-highlight');
+        const clearHistoryBtn = document.getElementById('clear-history-btn');
+        const recentScansListContainer = document.getElementById('recent-scans-list-container');
+
+        // --- 全局状态变量 ---
+        let selectedFiles = [];
+        let currentTheme = localStorage.getItem('theme') || 'light';
+        let currentFormat = 'word';
+        let currentMergeMode = 'separate';
+        let apiKey = localStorage.getItem('llm_api_key') || '';
+        let recentScans = JSON.parse(localStorage.getItem('recent_scans') || '[]');
+
+        // --- 主题切换功能 ---
+        function applyTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.classList.add('dark');
+                themeIconLight.classList.add('hidden');
+                themeIconDark.classList.remove('hidden');
+            } else {
+                document.documentElement.classList.remove('dark');
+                themeIconLight.classList.remove('hidden');
+                themeIconDark.classList.add('hidden');
+            }
+            currentTheme = theme;
+            localStorage.setItem('theme', theme);
+        }
+
+        themeToggleBtn.addEventListener('click', () => {
+            applyTheme(currentTheme === 'light' ? 'dark' : 'light');
+        });
+
+        // --- API Key 管理 ---
+        function updateApiKeyStatus() {
+            if (apiKey && apiKey.trim() !== '') {
+                settingsBtn.classList.add('api-key-valid');
+                settingsBtn.classList.remove('api-key-invalid');
+            } else {
+                settingsBtn.classList.remove('api-key-valid');
+                settingsBtn.classList.add('api-key-invalid');
+            }
+        }
+
+        settingsBtn.addEventListener('click', () => {
+            apiKeyInput.value = apiKey;
+            apiKeyModalOverlay.classList.add('active');
+        });
+
+        saveApiKeyBtn.addEventListener('click', () => {
+            const newApiKey = apiKeyInput.value.trim();
+            if (newApiKey) {
+                apiKey = newApiKey;
+                localStorage.setItem('llm_api_key', apiKey);
+                updateApiKeyStatus();
+                apiKeyModalOverlay.classList.remove('active');
+                updateStatusBar('API Key 已保存');
+            } else {
+                alert('请输入有效的 API Key');
+            }
+        });
+
+        cancelApiKeyBtn.addEventListener('click', () => {
+            apiKeyModalOverlay.classList.remove('active');
+        });
+
+        // --- 格式切换功能 ---
+        formatToggle.addEventListener('click', () => {
+            if (currentFormat === 'word') {
+                currentFormat = 'pdf';
+                formatToggle.classList.add('pdf-selected');
+            } else {
+                currentFormat = 'word';
+                formatToggle.classList.remove('pdf-selected');
+            }
+            updateStatusBar(`已选择 ${currentFormat === 'word' ? 'Word' : 'PDF'} 格式`);
+        });
+
+        // --- 合并模式切换功能 ---
+        mergeToggle.addEventListener('click', () => {
+            if (currentMergeMode === 'separate') {
+                currentMergeMode = 'combined';
+                mergeToggle.classList.add('combined-selected');
+            } else {
+                currentMergeMode = 'separate';
+                mergeToggle.classList.remove('combined-selected');
+            }
+            updateStatusBar(`已选择${currentMergeMode === 'separate' ? '逐张保存' : '合并保存'}模式`);
+        });
+
+        // --- 文件上传处理 ---
+        fileUploadInput.addEventListener('change', handleFileSelection);
+        
+        function handleFileSelection(event) {
+            const files = Array.from(event.target.files);
+            if (files.length > 0) {
+                selectedFiles = files;
+                displayImagePreview(files[0]);
+                updateStatusBar(`已选择 ${files.length} 个文件`);
+            }
+        }
+
+        function displayImagePreview(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                imagePreviewArea.innerHTML = `<img src="${e.target.result}" alt="预览图片" class="max-w-full max-h-full object-contain rounded-lg">`;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // --- 拖拽上传功能 ---
+        fileInputAreaLabel.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileInputAreaLabel.style.backgroundColor = 'rgba(99, 102, 241, 0.1)';
+        });
+
+        fileInputAreaLabel.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            fileInputAreaLabel.style.backgroundColor = '';
+        });
+
+        fileInputAreaLabel.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileInputAreaLabel.style.backgroundColor = '';
+            const files = Array.from(e.dataTransfer.files).filter(file => 
+                file.type.startsWith('image/')
+            );
+            if (files.length > 0) {
+                selectedFiles = files;
+                displayImagePreview(files[0]);
+                updateStatusBar(`已选择 ${files.length} 个文件`);
+            }
+        });
+
+        // --- 文本复制功能 ---
+        copyTextBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(extractedTextArea.value).then(() => {
+                updateStatusBar('文本已复制到剪贴板');
+            });
+        });
+
+        // --- 状态栏更新 ---
+        function updateStatusBar(message) {
+            statusBar.textContent = message;
+            setTimeout(() => {
+                statusBar.textContent = '准备就绪';
+            }, 3000);
+        }
+
+        // --- 处理按钮功能 ---
+        processBtn.addEventListener('click', async () => {
+            if (selectedFiles.length === 0) {
+                updateStatusBar('请先选择图片文件');
+                return;
+            }
+
+            if (!apiKey || apiKey.trim() === '') {
+                updateStatusBar('请先设置 API Key');
+                apiKeyModalOverlay.classList.add('active');
+                return;
+            }
+
+            updateStatusBar('正在处理图片...');
+            processBtn.disabled = true;
+
+            try {
+                // 这里应该调用后端API进行图片处理
+                // 模拟处理过程
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const mockText = '这是从图片中提取的示例文本内容...';
+                extractedTextArea.value = mockText;
+                copyTextBtn.style.display = 'inline-block';
+                
+                // 添加到历史记录
+                const scanRecord = {
+                    id: Date.now(),
+                    timestamp: new Date().toLocaleString(),
+                    fileCount: selectedFiles.length,
+                    format: currentFormat,
+                    mergeMode: currentMergeMode,
+                    preview: mockText.substring(0, 50) + '...'
+                };
+                
+                recentScans.unshift(scanRecord);
+                recentScans = recentScans.slice(0, 10); // 只保留最近10条
+                localStorage.setItem('recent_scans', JSON.stringify(recentScans));
+                updateRecentScansList();
+                
+                updateStatusBar('处理完成');
+            } catch (error) {
+                updateStatusBar('处理失败: ' + error.message);
+            } finally {
+                processBtn.disabled = false;
+            }
+        });
+
+        // --- 历史记录管理 ---
+        function updateRecentScansList() {
+            if (recentScans.length === 0) {
+                recentScansListContainer.innerHTML = '<p class="text-slate-400 text-center py-8">暂无扫描历史</p>';
+                return;
+            }
+
+            const historyHTML = recentScans.map(scan => `
+                <div class="bg-white/20 dark:bg-black/20 rounded-lg p-3 mb-3 hover:bg-white/30 dark:hover:bg-black/30 transition-colors cursor-pointer">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">${scan.fileCount} 个文件</span>
+                        <span class="text-xs text-slate-500">${scan.timestamp}</span>
+                    </div>
+                    <p class="text-xs text-slate-600 dark:text-slate-400 mb-2">${scan.preview}</p>
+                    <div class="flex gap-2">
+                        <span class="text-xs px-2 py-1 bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 rounded">${scan.format.toUpperCase()}</span>
+                        <span class="text-xs px-2 py-1 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded">${scan.mergeMode === 'separate' ? '逐张' : '合并'}</span>
+                    </div>
+                </div>
+            `).join('');
+
+            recentScansListContainer.innerHTML = historyHTML;
+        }
+
+        clearHistoryBtn.addEventListener('click', () => {
+            if (confirm('确定要清除所有扫描历史吗？')) {
+                recentScans = [];
+                localStorage.removeItem('recent_scans');
+                updateRecentScansList();
+                updateStatusBar('历史记录已清除');
+            }
+        });
+
+        // --- 初始化 ---
+        applyTheme(currentTheme);
+        updateApiKeyStatus();
+        updateRecentScansList();
+        
+        // 初始化图片预览区域
+        imagePreviewArea.innerHTML = '<p class="text-slate-400">选择图片后将在此显示预览</p>';
+    });
+</script>
 </body>
 </html>
 
