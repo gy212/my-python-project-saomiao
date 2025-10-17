@@ -20,9 +20,6 @@ D:\PythonProject\扫描\
 │   └── config_manager.pyw # 配置管理模块
 ├── ui/                     # 用户界面文件
 │   └── ui.html            # 现代化主界面HTML文件
-├── debug/                  # 调试工具
-├── logs/                   # 日志文件目录
-├── tests/                  # 调试和测试文件
 └── docs/                   # 项目文档
 ```
 
