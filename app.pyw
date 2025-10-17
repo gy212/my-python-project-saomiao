@@ -1,4 +1,4 @@
-# -----------------------------------------------------------------------------
+﻿# -----------------------------------------------------------------------------
 # 功能: 应用程序主入口 (优化版)
 # 优化内容:
 # 1. 关闭debug模式提升启动速度
@@ -22,42 +22,43 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from src.main_api import Api
 
 
-
 def main():
     """应用程序主函数"""
-    # 创建API实例
     api_instance = Api()
 
     ui_file = Path(__file__).resolve().parent / 'ui' / 'ui.html'
     if not ui_file.exists():
         raise FileNotFoundError(f'UI 文件未找到: {ui_file}')
 
-    # 创建窗口，优化参数减少启动开销
     window = webview.create_window(
-        'LLM 图像扫描与导出 (Pywebview)',
+        'LLM 图像扫描与导出 (PyWebView)',
         ui_file.as_uri(),
         js_api=api_instance,
         width=1250,
         height=850,
         resizable=True,
         confirm_close=True,
-
-        # 性能优化参数
         shadow=True,
-        text_select=False  # 减少初始化开销
+        text_select=False,
+        hidden=True
     )
 
-    # 将窗口实例回传给API类
     api_instance._window = window
 
-    # 计算初始化时间
-    init_time = time.time() - start_time
-    print(f"应用初始化完成，耗时: {init_time:.2f}秒")
+    def handle_window_loaded():
+        """前端加载完成后再显示窗口，确保界面一次性呈现"""
+        init_duration = time.time() - start_time
+        print(f"前端加载完成，耗时: {init_duration:.2f}s")
+        try:
+            window.evaluate_js("window.dispatchEvent(new Event('pywebviewready'))")
+        except Exception as exc:
+            print(f"派发前端就绪事件失败: {exc}")
+        window.show()
 
-    # 启动应用，关闭debug模式提升性能
+    window.events.loaded += handle_window_loaded
+
     webview.start(debug=False)
 
 
 if __name__ == '__main__':
     main()
-

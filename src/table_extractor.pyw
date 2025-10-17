@@ -8,7 +8,6 @@
 
 from img2table.document import Image
 from img2table.ocr import TesseractOCR
-import pandas as pd
 
 
 def extract_tables_as_markdown(image_path: str) -> list[str]:

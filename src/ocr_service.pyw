@@ -14,7 +14,7 @@ import mimetypes
 import os
 import requests
 from . import config_manager as cfg
-from .logger import get_logger, get_error_handler, handle_exceptions
+from .logger import get_logger, get_error_handler
 from .cache_manager import get_cache_manager, CacheConfig
 from .error_manager import get_error_manager, enhanced_handle_exceptions
 from .performance_monitor import get_performance_monitor, performance_monitor

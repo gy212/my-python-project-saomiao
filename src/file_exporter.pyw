@@ -14,7 +14,6 @@ file_exporter.pyw（更新版）
 - 可选：fpdf（pip install fpdf2）。
 """
 
-from __future__ import annotations
 import os
 import platform
 import subprocess
@@ -27,15 +26,13 @@ except Exception:
 
 # 导入日志系统
 try:
-    from .logger import get_logger, get_error_handler, handle_exceptions
+    from .logger import get_logger
     logger = get_logger()
-    error_handler = get_error_handler()
-    logger.info("文件导出模块初始化完成")
+    logger.info("File exporter module initialized")
 except ImportError:
-    # 兼容性处理：如果日志模块不存在，使用print作为fallback
+    # Fall back to print logging when logger is unavailable
     logger = None
-    error_handler = None
-    print("文件导出模块: 日志系统不可用，使用print作为fallback")
+    print("File exporter: logger unavailable, fallback to print")
 
 def _log_info(message):
     if logger:

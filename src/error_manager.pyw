@@ -3,7 +3,6 @@
 提供统一的错误处理、用户友好的错误提示和错误恢复机制
 """
 
-import os
 import traceback
 import time
 from typing import Dict, List, Optional, Any, Callable
@@ -11,7 +10,10 @@ from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime, timedelta
 
-from .logger import get_logger, get_error_handler
+try:
+    from .logger import get_logger, handle_exceptions
+except ImportError:
+    from logger import get_logger, handle_exceptions
 
 logger = get_logger()
 
@@ -366,31 +368,26 @@ def get_error_manager() -> UserFriendlyErrorManager:
         _error_manager = UserFriendlyErrorManager()
     return _error_manager
 
+
 def enhanced_handle_exceptions(func_name: str = None):
-    """增强的异常处理装饰器"""
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            error_manager = get_error_manager()
-            name = func_name or func.__name__
-            
-            try:
-                result = func(*args, **kwargs)
-                return result
-            except Exception as e:
-                error_info = error_manager.handle_error(e, name, {
-                    'args': str(args)[:200],
-                    'kwargs': str(kwargs)[:200]
-                })
-                
-                # 返回用户友好的错误响应
-                return {
-                    'success': False,
-                    'error_id': error_info.error_id,
-                    'message': error_info.user_message,
-                    'suggested_actions': error_info.suggested_actions,
-                    'severity': error_info.severity.value,
-                    'timestamp': error_info.timestamp.isoformat()
-                }
-        
-        return wrapper
-    return decorator
+    """??????????"""
+
+    def _on_exception(exception: Exception, name: str, context: Dict[str, str], default_response: Dict[str, Any]) -> Dict[str, Any]:
+        error_manager = get_error_manager()
+        try:
+            error_info = error_manager.handle_error(exception, name, context)
+        except Exception:
+            return default_response
+
+        return {
+            'success': False,
+            'error_id': error_info.error_id,
+            'message': error_info.user_message,
+            'suggested_actions': error_info.suggested_actions,
+            'severity': error_info.severity.value,
+            'timestamp': error_info.timestamp.isoformat()
+        }
+
+    return handle_exceptions(func_name, on_exception=_on_exception)
+
+

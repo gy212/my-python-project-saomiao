@@ -18,9 +18,9 @@ import hashlib
 import threading
 import tempfile
 import shutil
+from contextlib import suppress
 from typing import Dict, Any, Optional, List, Tuple, Union
-from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta
+from dataclasses import dataclass
 from collections import OrderedDict
 import pickle
 import gzip
@@ -449,10 +449,8 @@ class CacheManager:
     
     def __del__(self):
         """析构函数"""
-        try:
+        with suppress(Exception):
             self.stop()
-        except Exception:
-            pass
 
 
 # 全局缓存管理器实例

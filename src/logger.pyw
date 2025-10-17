@@ -6,11 +6,11 @@
 """
 
 import logging
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from functools import wraps
+from typing import Callable, Optional
 
 
 class Logger:
@@ -190,30 +190,35 @@ def get_error_handler() -> ErrorHandler:
 
 
 # 装饰器：自动异常处理
-def handle_exceptions(func_name: str = None):
+
+def handle_exceptions(func_name: str = None, *, on_exception: Optional[Callable[[Exception, str, dict, dict], dict]] = None):
     """
-    异常处理装饰器
-    
+    ???????
     Args:
-        func_name: 自定义函数名，默认使用实际函数名
+        func_name: ????????????????
+        on_exception: ???????????? (????, ???, ???, ??????)
     """
     def decorator(func):
+        @wraps(func)
         def wrapper(*args, **kwargs):
             error_handler = get_error_handler()
             name = func_name or func.__name__
-            
+
             try:
                 result = func(*args, **kwargs)
                 return result
             except Exception as e:
-                return error_handler.handle_exception(name, e, {
-                    'args': str(args)[:200],  # 限制长度避免日志过大
+                context = {
+                    'args': str(args)[:200],  # ??????????
                     'kwargs': str(kwargs)[:200]
-                })
-        
+                }
+                default_response = error_handler.handle_exception(name, e, context)
+                if on_exception:
+                    return on_exception(e, name, context, default_response)
+                return default_response
+
         return wrapper
     return decorator
-
 
 if __name__ == "__main__":
     # 测试日志系统

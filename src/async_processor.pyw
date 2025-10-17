@@ -11,10 +11,9 @@ async_processor.pyw
 5. 统一的错误处理与日志记录
 """
 
-import asyncio
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import suppress
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List, Callable, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
@@ -352,7 +351,5 @@ class AsyncOCRProcessor:
     
     def __del__(self):
         """析构函数"""
-        try:
+        with suppress(Exception):
             self.shutdown()
-        except:
-            pass

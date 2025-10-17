@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -123,6 +123,50 @@
         .modal-content { width: 90%; max-width: 420px; transform: scale(0.95); transition: transform 0.3s ease; }
         .modal-overlay.active .modal-content { transform: scale(1); }
 
+    
+        /* API Key Status Styles - Auto Generated */
+        
+/* API Key 状态样式 - 增强版 */
+#settings-btn.api-key-valid {
+    color: #10b981 !important;
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1)) !important;
+    border: 2px solid #10b981 !important;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+    backdrop-filter: blur(24px) saturate(1.2) !important;
+}
+
+#settings-btn.api-key-valid:hover {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.15)) !important;
+    transform: scale(1.1) rotate(15deg) !important;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.6) !important;
+}
+
+#settings-btn.api-key-invalid {
+    color: #ef4444 !important;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.1)) !important;
+    border: 2px solid #ef4444 !important;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+    backdrop-filter: blur(24px) saturate(1.2) !important;
+}
+
+#settings-btn.api-key-invalid:hover {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.15)) !important;
+    transform: scale(1.1) rotate(15deg) !important;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.6) !important;
+}
+
+/* 暗色模式下的API密钥状态样式 */
+.dark #settings-btn.api-key-valid {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.25), rgba(16, 185, 129, 0.15)) !important;
+    box-shadow: 0 0 15px rgba(16, 185, 129, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark #settings-btn.api-key-invalid {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.25), rgba(239, 68, 68, 0.15)) !important;
+    box-shadow: 0 0 15px rgba(239, 68, 68, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+}
+
+        /* End API Key Status Styles */
     </style>
 </head>
 <body class="dark:text-slate-200">
@@ -303,29 +347,161 @@
         });
 
         // --- API Key 管理 ---
+        const isPywebviewReady = () => typeof window.pywebview !== 'undefined' && !!window.pywebview.api;
+
+        async function waitForPywebviewApi(maxAttempts = 15, delayMs = 200) {
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                if (isPywebviewReady()) {
+                    return true;
+                }
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+            return false;
+        }
+
         function updateApiKeyStatus() {
-            if (apiKey && apiKey.trim() !== '') {
-                settingsBtn.classList.add('api-key-valid');
-                settingsBtn.classList.remove('api-key-invalid');
+            console.log('正在更新API密钥状态...');
+            
+            // 从后端API获取真实的API key状态
+            if (isPywebviewReady()) {
+                console.log('使用pywebview API获取密钥状态');
+                window.pywebview.api.get_api_key().then(response => {
+                    console.log('API响应:', response);
+                    if (response.success && response.data && response.data.has_api_key) {
+                        console.log('API密钥已配置，设置为有效状态');
+                        settingsBtn.classList.add('api-key-valid');
+                        settingsBtn.classList.remove('api-key-invalid');
+                        apiKey = response.data.api_key;
+                        localStorage.setItem('llm_api_key', apiKey);
+                    } else {
+                        console.log('API密钥未配置，设置为无效状态');
+                        settingsBtn.classList.remove('api-key-valid');
+                        settingsBtn.classList.add('api-key-invalid');
+                        apiKey = '';
+                        localStorage.removeItem('llm_api_key');
+                    }
+                    
+                    // 强制重新渲染
+                    setTimeout(() => {
+                        const currentClasses = settingsBtn.className;
+                        console.log('API调用后按钮类名:', currentClasses);
+                        const computedStyle = window.getComputedStyle(settingsBtn);
+                        console.log('计算后的颜色:', computedStyle.color);
+                        console.log('计算后的背景:', computedStyle.background);
+                    }, 100);
+                    
+                }).catch(error => {
+                    console.error('获取API key状态失败:', error);
+                    // 回退到localStorage检查
+                    console.log('回退到localStorage检查');
+                    const storedKey = localStorage.getItem('llm_api_key');
+                    if (storedKey && storedKey.trim() !== '') {
+                        console.log('localStorage中有API密钥，设置为有效状态');
+                        settingsBtn.classList.add('api-key-valid');
+                        settingsBtn.classList.remove('api-key-invalid');
+                        apiKey = storedKey;
+                    } else {
+                        console.log('localStorage中无API密钥，设置为无效状态');
+                        settingsBtn.classList.remove('api-key-valid');
+                        settingsBtn.classList.add('api-key-invalid');
+                        apiKey = '';
+                    }
+                    
+                    // 强制重新渲染
+                    setTimeout(() => {
+                        const currentClasses = settingsBtn.className;
+                        console.log('回退后按钮类名:', currentClasses);
+                    }, 100);
+                });
             } else {
-                settingsBtn.classList.remove('api-key-valid');
-                settingsBtn.classList.add('api-key-invalid');
+                // 如果pywebview不可用，使用localStorage
+                console.log('pywebview不可用，使用localStorage');
+                const storedKey = localStorage.getItem('llm_api_key');
+                if (storedKey && storedKey.trim() !== '') {
+                    console.log('localStorage中有API密钥，设置为有效状态');
+                    settingsBtn.classList.add('api-key-valid');
+                    settingsBtn.classList.remove('api-key-invalid');
+                    apiKey = storedKey;
+                } else {
+                    console.log('localStorage中无API密钥，设置为无效状态');
+                    settingsBtn.classList.remove('api-key-valid');
+                    settingsBtn.classList.add('api-key-invalid');
+                    apiKey = '';
+                }
+                
+                // 强制重新渲染
+                setTimeout(() => {
+                    const currentClasses = settingsBtn.className;
+                    console.log('localStorage后按钮类名:', currentClasses);
+                }, 100);
             }
         }
 
         settingsBtn.addEventListener('click', () => {
-            apiKeyInput.value = apiKey;
+            // 在打开设置界面时，从后端获取最新的API密钥
+            if (isPywebviewReady()) {
+                console.log('打开设置界面，从后端获取最新API密钥');
+                window.pywebview.api.get_api_key().then(response => {
+                    console.log('设置界面API响应:', response);
+                    if (response.success && response.data && response.data.has_api_key) {
+                        apiKey = response.data.api_key;
+                        apiKeyInput.value = apiKey;
+                        console.log('设置界面显示API密钥:', apiKey.substring(0, 10) + '...');
+                    } else {
+                        apiKey = '';
+                        apiKeyInput.value = '';
+                        console.log('设置界面显示空API密钥');
+                    }
+                }).catch(error => {
+                    console.error('获取API密钥失败，使用本地存储的值:', error);
+                    // 回退到localStorage
+                    const storedKey = localStorage.getItem('llm_api_key') || '';
+                    apiKey = storedKey;
+                    apiKeyInput.value = apiKey;
+                });
+            } else {
+                // 如果pywebview不可用，使用localStorage
+                const storedKey = localStorage.getItem('llm_api_key') || '';
+                apiKey = storedKey;
+                apiKeyInput.value = apiKey;
+                console.log('pywebview不可用，使用localStorage中的API密钥');
+            }
+            
             apiKeyModalOverlay.classList.add('active');
         });
 
         saveApiKeyBtn.addEventListener('click', () => {
             const newApiKey = apiKeyInput.value.trim();
             if (newApiKey) {
-                apiKey = newApiKey;
-                localStorage.setItem('llm_api_key', apiKey);
-                updateApiKeyStatus();
-                apiKeyModalOverlay.classList.remove('active');
-                updateStatusBar('API Key 已保存');
+                // 通过后端API保存API key
+                if (isPywebviewReady()) {
+                    console.log('通过后端API保存API密钥');
+                    window.pywebview.api.set_api_key(newApiKey).then(response => {
+                        console.log('保存API密钥响应:', response);
+                        if (response.success) {
+                            apiKey = newApiKey;
+                            localStorage.setItem('llm_api_key', apiKey);
+                            updateApiKeyStatus();
+                            apiKeyModalOverlay.classList.remove('active');
+                            updateStatusBar('API Key 已保存');
+                            console.log('API密钥保存成功，界面已更新');
+                        } else {
+                            console.error('保存API密钥失败:', response.message);
+                            alert('保存API Key失败: ' + (response.message || '未知错误'));
+                        }
+                    }).catch(error => {
+                        console.error('保存API Key失败:', error);
+                        alert('保存API Key失败，请检查网络连接');
+                    });
+                } else {
+                    // 回退到localStorage保存
+                    console.log('pywebview不可用，使用localStorage保存');
+                    apiKey = newApiKey;
+                    localStorage.setItem('llm_api_key', apiKey);
+                    updateApiKeyStatus();
+                    apiKeyModalOverlay.classList.remove('active');
+                    updateStatusBar('API Key 已保存');
+                }
             } else {
                 alert('请输入有效的 API Key');
             }
@@ -502,6 +678,19 @@
         // --- 初始化 ---
         applyTheme(currentTheme);
         updateApiKeyStatus();
+        if (!isPywebviewReady()) {
+            window.addEventListener('pywebviewready', () => {
+                console.log('捕获到 pywebviewready 事件，重新同步API密钥状态');
+                updateApiKeyStatus();
+            }, { once: true });
+
+            waitForPywebviewApi().then(isReady => {
+                if (isReady) {
+                    console.log('轮询检测到 pywebview API 可用，重新同步API密钥状态');
+                    updateApiKeyStatus();
+                }
+            });
+        }
         updateRecentScansList();
         
         // 初始化图片预览区域

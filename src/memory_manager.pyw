@@ -7,15 +7,15 @@ import os
 import gc
 import psutil
 import threading
-import time
-from typing import Dict, List, Optional, Tuple
+from contextlib import suppress
+from typing import Dict, List, Optional
 from PIL import Image
 import tempfile
 import shutil
-from datetime import datetime, timedelta
-from src.logger import get_logger, get_error_handler
+from datetime import datetime
+from src.logger import get_logger
 from src.cache_manager import get_cache_manager, CacheConfig
-from src.error_manager import get_error_manager, enhanced_handle_exceptions
+from src.error_manager import get_error_manager
 from src.performance_monitor import get_performance_monitor, performance_monitor
 
 logger = get_logger()
@@ -343,7 +343,5 @@ class MemoryManager:
     
     def __del__(self):
         """析构函数"""
-        try:
+        with suppress(Exception):
             self.stop()
-        except Exception:
-            pass

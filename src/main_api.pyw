@@ -12,17 +12,18 @@ import os
 import platform
 import subprocess
 import webview
-import re
 
 # 导入自定义模块 - 延迟导入优化
 from . import config_manager as cfg
 from .logger import get_logger, get_error_handler, handle_exceptions
 from .error_manager import get_error_manager, enhanced_handle_exceptions
-from .performance_monitor import get_performance_monitor, performance_monitor
+from .performance_monitor import get_performance_monitor
 from .batch_optimizer import BatchOptimizer, ProcessingConfig
 from .image_preprocessor import ImagePreprocessor
 from .text_postprocessor import TextPostProcessor
 from .memory_manager import MemoryManager, MemoryConfig
+from .data_preprocessor import DataPreprocessor
+from .format_validator import getFormatValidator, ValidationLevel
 
 class Api:
     def __init__(self):
@@ -46,6 +47,10 @@ class Api:
         self._image_preprocessor = None
         self._text_postprocessor = None
         self._memory_manager = None
+        
+        # 数据预处理器和格式验证器（延迟初始化）
+        self._data_preprocessor = None
+        self._format_validator = None
         
         # 启动性能监控
         get_performance_monitor().start_monitoring()
@@ -118,6 +123,20 @@ class Api:
             self._memory_manager = MemoryManager(memory_config)
             get_logger().info("内存管理器已初始化")
         return self._memory_manager
+
+    def _get_data_preprocessor(self):
+        """获取数据预处理器实例（内部使用）"""
+        if self._data_preprocessor is None:
+            self._data_preprocessor = DataPreprocessor()
+            get_logger().info("数据预处理器已初始化")
+        return self._data_preprocessor
+
+    def _get_format_validator(self):
+        """获取格式验证器实例（内部使用）"""
+        if self._format_validator is None:
+            self._format_validator = getFormatValidator(ValidationLevel.STANDARD)
+            get_logger().info("格式验证器已初始化")
+        return self._format_validator
 
     def _get_async_processor(self):
         """获取异步处理器实例（内部使用）"""
@@ -570,18 +589,65 @@ class Api:
                         if quality_metrics.error_indicators:
                             get_logger().warning(f"图片 {image_name} 检测到质量问题: {', '.join(quality_metrics.error_indicators)}")
                     
-                    current_file_result["extracted_text"] = processed_text
+                    # 步骤 4: 数据预处理和格式验证 - 确保pandas兼容性
+                    get_logger().debug("步骤 4: 正在进行数据预处理和格式验证...")
+                    
+                    # 数据预处理 - 标准化格式
+                    preprocessor_result = self._get_data_preprocessor().preprocessData(
+                        processed_text, 
+                        dataType='markdown',
+                        enableValidation=True,
+                        enableAutoFix=True
+                    )
+                    
+                    if preprocessor_result.success:
+                        standardized_text = preprocessor_result.processedData
+                        
+                        # 格式验证 - 确保pandas兼容性
+                        validation_result = self._get_format_validator().validateData(
+                            standardized_text,
+                            dataType='markdown',
+                            enableAutoFix=True
+                        )
+                        
+                        # 记录预处理和验证结果
+                        get_logger().info(f"图片 {image_name} 数据预处理完成: "
+                                       f"质量分数={validation_result.qualityScore:.2f}, "
+                                       f"问题数={validation_result.totalIssues}, "
+                                       f"自动修复={len(validation_result.fixedIssues)}")
+                        
+                        if validation_result.totalIssues > 0:
+                            get_logger().info(f"数据质量建议: {', '.join(validation_result.suggestions[:3])}")
+                        
+                        final_text = standardized_text
+                        
+                        # 添加预处理质量信息
+                        preprocessing_quality = {
+                            'standardization_applied': len(preprocessor_result.appliedTransformations),
+                            'validation_score': validation_result.qualityScore,
+                            'issues_found': validation_result.totalIssues,
+                            'issues_fixed': len(validation_result.fixedIssues),
+                            'pandas_compatible': validation_result.isValid
+                        }
+                    else:
+                        get_logger().warning(f"图片 {image_name} 数据预处理失败，使用后处理文本")
+                        final_text = processed_text
+                        preprocessing_quality = {'pandas_compatible': False, 'error': preprocessor_result.errorMessage}
+                    
+                    current_file_result["extracted_text"] = final_text
                     current_file_result["text_quality"] = {
                         'confidence_score': quality_metrics.confidence_score if quality_metrics else 0.0,
                         'original_length': len(full_markdown_text),
                         'processed_length': len(processed_text),
-                        'processing_steps': postprocess_result.get('processing_steps', [])
+                        'final_length': len(final_text),
+                        'processing_steps': postprocess_result.get('processing_steps', []),
+                        'preprocessing_quality': preprocessing_quality
                     }
                 else:
                     # 后处理失败，使用原始文本
                     get_logger().warning(f"图片 {image_name} 文本后处理失败，使用原始文本")
                     current_file_result["extracted_text"] = full_markdown_text
-                    current_file_result["text_quality"] = {'confidence_score': 0.5}
+                    current_file_result["text_quality"] = {'confidence_score': 0.5, 'pandas_compatible': False}
                 
                 get_logger().info(f"图片 {image_name} 处理完成，最终文本长度: {len(current_file_result['extracted_text'])} 字符")
 
